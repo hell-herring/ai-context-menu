@@ -56,6 +56,22 @@ case "$(uname -s)-$(uname -m)" in
   *) fail "未対応の OS/CPU です: $(uname -s)-$(uname -m)（Linux x64 / arm64 のみ）" ;;
 esac
 
+# 入れた依存が消えていないか（pnpm の仮想ストアと、package.json の直接の依存がすべてあるか）。
+# オフラインで確かめられる範囲にとどめる（各パッケージの中身までは検査しない）
+deps_installed() {
+  [[ -f "$ROOT_DIR/node_modules/.pnpm/lock.yaml" ]] || return 1
+  (cd "$ROOT_DIR" && node -e '
+    const fs = require("node:fs");
+    const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+    const names = [...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.devDependencies ?? {})];
+    const missing = names.filter((name) => !fs.existsSync("node_modules/" + name + "/package.json"));
+    if (missing.length > 0) {
+      console.error("見つからない依存: " + missing.join(" "));
+      process.exit(1);
+    }
+  ' 2>&1 | sed 's/^/[setup-dev-env]      /' >&2; exit "${PIPESTATUS[0]}")
+}
+
 deps_hash() {
   cat "$ROOT_DIR/package.json" "$ROOT_DIR/pnpm-lock.yaml" "$ROOT_DIR/pnpm-workspace.yaml" | sha256sum | cut -d " " -f 1
 }
@@ -183,9 +199,13 @@ set_chromium_fallback() {
 }
 
 install_chromium() {
-  # 利用者が自分で指定した Chromium（前回の代替とは別のもの）は、起動できればそのまま使う
-  if [[ -n "${PLAYWRIGHT_CHROMIUM_EXECUTABLE:-}" && "$PLAYWRIGHT_CHROMIUM_EXECUTABLE" != "$CHROMIUM_FALLBACK" ]] &&
-    chromium_works; then
+  # 利用者が自分で指定した Chromium（前回の代替とは別のもの）はそのまま使う。起動できなくても代替には替えない
+  # （env.sh は利用者の指定を上書きしないため、代替を選んでも以降のシェルでは指定したパスが使われてしまう）
+  if [[ -n "$USER_CHROMIUM" ]]; then
+    set_chromium_fallback ""
+    export PLAYWRIGHT_CHROMIUM_EXECUTABLE="$USER_CHROMIUM"
+    chromium_works ||
+      log "WARN 指定された PLAYWRIGHT_CHROMIUM_EXECUTABLE（$USER_CHROMIUM）が起動できません。正しいパスにするか、未設定にして再実行してください"
     return 0
   fi
   # 前回の代替があっても、Playwright の想定版を毎回優先する（取得できるようになったら代替をやめる）
@@ -247,10 +267,10 @@ check() {
   fi
   # オフライン（Codex のエージェント実行中など）でも検査できるよう、pnpm には問い合わせず、
   # このスクリプトで入れたときの package.json / pnpm-lock.yaml / pnpm-workspace.yaml と比べる
-  if [[ -f "$DEPS_STAMP" && "$(cat "$DEPS_STAMP")" == "$(deps_hash)" && -d "$ROOT_DIR/.wxt" ]]; then
+  if [[ -f "$DEPS_STAMP" && "$(cat "$DEPS_STAMP")" == "$(deps_hash)" && -d "$ROOT_DIR/.wxt" ]] && deps_installed; then
     log "OK   依存（pnpm-lock.yaml と一致）"
   else
-    log "NG   依存が未導入か、package.json / pnpm-lock.yaml の変更後に入れ直していません（bash scripts/setup-dev-env.sh）"
+    log "NG   依存が未導入・欠けている、または package.json / pnpm-lock.yaml の変更後に入れ直していません（bash scripts/setup-dev-env.sh）"
     ok=1
   fi
   # Chromium は E2E にだけ使うため、なくても失敗にはしない（環境のセットアップ自体は止めない）
@@ -274,6 +294,9 @@ if [[ "$MODE" == "setup" ]]; then
   if [[ -f "$ENV_SCRIPT" ]] && grep -qF "$CHROMIUM_FALLBACK_MARKER" "$ENV_SCRIPT"; then
     CHROMIUM_FALLBACK="$(sed -n "s|^$CHROMIUM_FALLBACK_MARKER ||p" "$ENV_SCRIPT")"
   fi
+  # 利用者が自分で指定した Chromium（env.sh を読む前の値。前回の代替と同じなら env.sh 由来なので除く）
+  USER_CHROMIUM="${PLAYWRIGHT_CHROMIUM_EXECUTABLE:-}"
+  [[ "$USER_CHROMIUM" != "$CHROMIUM_FALLBACK" ]] || USER_CHROMIUM=""
   write_env_script
   persist_to_profiles
 fi

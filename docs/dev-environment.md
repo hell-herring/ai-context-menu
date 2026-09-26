@@ -15,7 +15,7 @@ web 版 Claude Code と web 版 Codex のどちらで作業しても、同じ版
 - 版はすべてリポジトリ内のファイルから決まる。`.node-version` / `packageManager` / `pnpm-lock.yaml` を更新すれば、次のセットアップで両環境とも追従する。
 - 実行は冪等・非対話。揃っているものは取得しないため、2 回目以降は 1 秒未満で終わる（`pnpm install` の確認のみ）。
 - 最後に `--check` と同じ検査（Node.js・pnpm の版、依存、Chromium の起動）を行い、Node.js・pnpm・依存が揃っていなければ終了コード 1 で失敗する。Chromium は E2E にだけ使うため、起動できなくても（依存ライブラリを入れられなかった場合も）警告にとどめる。
-- 依存の検査はオフラインでも行えるよう pnpm には問い合わせず、このスクリプトで `pnpm install` したときの `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml` のハッシュ（`node_modules/.aicm-deps.sha256`）と比べる。ブランチの切り替えなどでこれらが変わったら、スクリプトを実行し直す（手で `pnpm install` しただけでは `--check` は `NG` のまま）。
+- 依存の検査はオフラインでも行えるよう pnpm には問い合わせず、このスクリプトで `pnpm install` したときの `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml` のハッシュ（`node_modules/.aicm-deps.sha256`）と比べ、あわせて pnpm の仮想ストア（`node_modules/.pnpm/lock.yaml`）と `package.json` の直接の依存がすべて `node_modules` にあることを確かめる（各パッケージの中身までは検査しない）。ブランチの切り替えなどでこれらが変わったら、スクリプトを実行し直す（手で `pnpm install` しただけでは `--check` は `NG` のまま）。
 
 ```bash
 bash scripts/setup-dev-env.sh          # セットアップ（冪等）
@@ -105,7 +105,7 @@ pnpm build:e2e && pnpm test:e2e             # E2E 用ビルド・E2E テスト
 | 項目 | web 版 Claude Code | web 版 Codex | 影響と対処 |
 |---|---|---|---|
 | 元から入っている Node.js | 22 系など（`/opt/node*`） | イメージのプリセット | 使わない。スクリプトの Node.js を PATH の先頭に置く |
-| Playwright の Chromium の取得（`cdn.playwright.dev`） | 既定のネットワーク設定では**遮断される** | セットアップ中は取得できる | Claude Code では `PLAYWRIGHT_BROWSERS_PATH` 配下の既存の Chromium（Playwright の想定より古い版）を `PLAYWRIGHT_CHROMIUM_EXECUTABLE` で使う。2026-09 時点で E2E は全件通る。セットアップのたびに想定版の取得を先に試みる（遮断されている間は数秒余分にかかる）ため、環境のネットワーク設定で `cdn.playwright.dev` に出られるようにすれば、次のセットアップで想定版を取得し、代替は使わなくなる。利用者が自分で `PLAYWRIGHT_CHROMIUM_EXECUTABLE` を指定した場合は、それが起動できればそのまま使う |
+| Playwright の Chromium の取得（`cdn.playwright.dev`） | 既定のネットワーク設定では**遮断される** | セットアップ中は取得できる | Claude Code では `PLAYWRIGHT_BROWSERS_PATH` 配下の既存の Chromium（Playwright の想定より古い版）を `PLAYWRIGHT_CHROMIUM_EXECUTABLE` で使う。2026-09 時点で E2E は全件通る。セットアップのたびに想定版の取得を先に試みる（遮断されている間は数秒余分にかかる）ため、環境のネットワーク設定で `cdn.playwright.dev` に出られるようにすれば、次のセットアップで想定版を取得し、代替は使わなくなる。利用者が自分で `PLAYWRIGHT_CHROMIUM_EXECUTABLE` を指定した場合は、それをそのまま使う（起動できなければ代替には替えずに警告する。正しいパスにするか、未設定にして再実行する） |
 | エージェント実行中のネットワーク | 環境のネットワーク設定に従う | 既定でオフ | 依存の追加（`pnpm add`）は Codex ではセットアップ以外でできない。依存を変える作業は Claude Code かローカルで行う |
 | 環境変数の反映 | `$CLAUDE_ENV_FILE` | `~/.bashrc` / `~/.profile` | スクリプトが両方に書く |
 | Node.js のパッチ版 | 初回セットアップ時点の 26.x の最新 | 同左 | 導入済みの 26.x があれば更新しない。新しいパッチ版にするときは `$AICM_DEV_HOME/node-v*` を削除して再実行する（CI は毎回最新の 26.x） |
