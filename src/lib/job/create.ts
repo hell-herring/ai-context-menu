@@ -35,6 +35,8 @@ export interface JobContext {
   presetId: PresetId;
   pageUrl: string;
   frameUrl?: string | undefined;
+  /** URL にホスト名がないフレームの実際のオリジン・祖先オリジン（除外判定用。lib/extract/origins.ts） */
+  frameOrigins?: readonly string[] | undefined;
 }
 
 /**
@@ -114,7 +116,9 @@ export function createErrorJob(context: JobContext, error: JobErrorCode): Job {
 
 function jobBase(context: JobContext): JobBase {
   const hostnames = new Set(
-    [context.pageUrl, context.frameUrl].map((url) => (url === undefined ? "" : jobHostname(url))),
+    [context.pageUrl, context.frameUrl, ...(context.frameOrigins ?? [])].map((url) =>
+      url === undefined ? "" : jobHostname(url),
+    ),
   );
   hostnames.delete("");
   const base: JobBase = {

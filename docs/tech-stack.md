@@ -90,7 +90,7 @@
 1. `contextMenus.onClicked`（background）
 2. **最初に** `const opening = chrome.sidePanel.open({ windowId: tab.windowId })` を呼ぶ（ユーザー操作のコンテキストを失う前に。ここより前に `await` を挟まない）
 3. `await opening` し、**失敗したら以降を中止する**（抽出もジョブ書き込みもしない）。パネルが開けないままバックグラウンドで送信が進むことを防ぐ
-4. 除外ドメイン判定（`info.pageUrl` と `info.frameUrl` の両方）・`info.editable` 判定 → 該当すればエラージョブを書き込んで終了（エラージョブの書き込みも手順 7 の世代確認を経由し、`seq` / `createdAt` を持たせる）
+4. 除外ドメイン判定（`info.pageUrl` と `info.frameUrl` の両方。クリックされた文書の URL にホスト名がなければ `extract-origins.js` で実際のオリジン・祖先オリジンも取得して判定）・`info.editable` 判定 → 該当すればエラージョブを書き込んで終了（エラージョブの書き込みも手順 7 の世代確認を経由し、`seq` / `createdAt` を持たせる）
 5. `scripting.executeScript` で選択テキスト or 本文を取得（注入スクリプト側でも返す文字数をハード上限 1,000,000 文字で打ち切り、元の文字数を併せて返す）
 6. **ジョブ書き込み前に**、ジョブの全フィールドを対象にサイズを測る。タイトルは 300 文字、プロバイダ送信用 URL（`origin + pathname`）は 2,048 文字、表示用の元 URL は 4,096 文字を上限とし、超える場合は短縮したうえで `oversize` の理由に `metadata` を記録する（黙って短縮しない）。本文は **XML エスケープ後の文字数**を測り（[§4.6](#46-プロンプト構成)）、設定の最大入力文字数を超えていれば、エスケープ後の長さが上限に収まる位置で元テキストを先頭から上限までに切り詰めたうえで `originalLength` と `oversize: true` を付ける（`storage.session` の容量上限で書き込みが失敗するのを防ぐ。確認なしに送らないため、サイドパネルは `oversize` のジョブを必ずユーザー確認に回す）
 7. 書き込み直前に**クリック世代を確認**する（通常ジョブ・エラージョブを問わず、`job.<windowId>` へのすべての書き込みは同じ関数を通す）。background はクリック受付時（手順 1）にウィンドウごとの連番 `seq` を採番してメモリに保持し、書き込み時点でそのウィンドウの最新 `seq` と一致しない（後から別のクリックがあった）場合は破棄する。抽出の完了順が前後しても古いクリックが新しいジョブを上書きしない。ジョブにも `seq` を含め、サイドパネルは処理中/処理済みより小さい `seq` のジョブを無視する（Service Worker 再起動で連番がリセットされた場合に備え `createdAt` も比較）
@@ -123,6 +123,7 @@
 │   │   ├── background.ts
 │   │   ├── extract.ts         # defineUnlistedScript: ページに注入する本文抽出処理
 │   │   ├── extract-selection.ts # defineUnlistedScript: ページに注入する選択テキスト取得処理
+│   │   ├── extract-origins.ts # defineUnlistedScript: フレームの実際のオリジン・祖先オリジンの取得（除外判定用）
 │   │   ├── sidepanel/         # index.html, main.tsx, App.tsx
 │   │   └── options/
 │   ├── lib/

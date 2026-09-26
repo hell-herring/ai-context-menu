@@ -1,5 +1,9 @@
-import { isExcludedPage, isExcludedUrl } from "../domain/exclude";
-import { PageExtractionSchema, SelectionExtractionSchema } from "../extract/schema";
+import { isExcludedPage, isExcludedUrl, urlHostname } from "../domain/exclude";
+import {
+  FrameOriginsSchema,
+  PageExtractionSchema,
+  SelectionExtractionSchema,
+} from "../extract/schema";
 import type { Job } from "../storage/schema";
 import {
   createContentJob,
@@ -10,7 +14,7 @@ import {
 } from "./create";
 
 /** ページに注入する抽出スクリプト（`entrypoints/extract*.ts` のビルド出力） */
-export type InjectedScript = "/extract.js" | "/extract-selection.js";
+export type InjectedScript = "/extract.js" | "/extract-selection.js" | "/extract-origins.js";
 
 /** クリックされた場所（`contextMenus.onClicked` の `info` / `tab` から作る） */
 export interface ClickTarget {
@@ -39,13 +43,30 @@ export interface PrepareJobDeps {
  */
 export async function prepareJob(
   target: ClickTarget,
-  context: JobContext,
+  clickContext: JobContext,
   deps: PrepareJobDeps,
 ): Promise<Job> {
+  let context = clickContext;
   // 除外ドメインはコンテンツを取得する前に、ページ URL とフレーム URL の両方で判定する
   const excludedDomains = await deps.getExcludedDomains();
   if (isExcludedPage(context, excludedDomains)) {
     return createErrorJob(context, "excludedDomain");
+  }
+  // URL にホスト名がないフレーム（about:blank / about:srcdoc 等）は親のオリジンを引き継ぐため、
+  // 実際のオリジンと祖先オリジンを取得して判定する（コンテンツの取得より前に行う）
+  const clickedUrl = context.frameUrl ?? context.pageUrl;
+  if (urlHostname(clickedUrl) === undefined) {
+    const origins = FrameOriginsSchema.safeParse(
+      await runScript("/extract-origins.js", target, deps),
+    );
+    if (!origins.success) {
+      // オリジンを確認できないフレームからは取得しない
+      return createErrorJob(context, "unreadablePage");
+    }
+    context = { ...context, frameOrigins: origins.data };
+    if (origins.data.some((origin) => isExcludedUrl(origin, excludedDomains))) {
+      return createErrorJob(context, "excludedDomain");
+    }
   }
   // 入力欄・contenteditable 内の選択は送らない
   if (target.editable) {

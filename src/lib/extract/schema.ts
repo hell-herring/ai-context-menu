@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_ANCESTOR_ORIGINS } from "./origins";
 import type { PageExtraction } from "./page";
 import type { SelectionExtraction } from "./selection";
 
@@ -19,3 +20,9 @@ export const SelectionExtractionSchema = z.object({
   originalLength: z.int().nonnegative(),
   editable: z.boolean(),
 }) satisfies z.ZodType<SelectionExtraction>;
+
+/** フレームのオリジン（自身 + 祖先） */
+export const FrameOriginsSchema = z
+  .array(z.string().max(4_096))
+  .min(1)
+  .max(MAX_ANCESTOR_ORIGINS + 1);

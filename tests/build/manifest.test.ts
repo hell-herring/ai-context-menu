@@ -58,6 +58,7 @@ describe("本番ビルドの manifest", () => {
     const files = (await listFiles(OUTPUT_DIR)).map((file) => path.relative(OUTPUT_DIR, file));
     expect(files).toContain("extract.js");
     expect(files).toContain("extract-selection.js");
+    expect(files).toContain("extract-origins.js");
   });
 });
 

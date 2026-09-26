@@ -53,7 +53,7 @@ Node.js は `.node-version`（26）、pnpm は `package.json` の `packageManage
 
 - `wxt.config.ts` — manifest 定義。**権限はここだけで管理**し、変更したら `tests/build/manifest.test.ts` の期待値も更新する（人間の承認必須）。権限は §2 の一覧のうち、使うマイルストーンで必要になったものだけを追加する（現在: `contextMenus`, `sidePanel`, `activeTab`, `scripting`, `storage` と host `https://api.anthropic.com/*`, `https://api.openai.com/*`）。自動インポートは無効（`imports: false`）なので `browser` 等は明示的に import する。
 - `src/entrypoints/background.ts` — コンテキストメニュー、`sidePanel.open()`、除外判定（M2）、コンテンツ取得、`storage.session` へジョブ書き込み。**短命な処理のみ。**
-- `src/entrypoints/extract.ts` / `extract-selection.ts` — `scripting.executeScript` で必要時のみ注入する読み取り専用スクリプト（ページ本文 / 選択テキスト）。main の戻り値が `executeScript` の結果になる。中身は `src/lib/extract/page.ts` / `selection.ts`（注入スクリプトを小さく保つため zod 等は import しない。戻り値の検証は `src/lib/extract/schema.ts` で background 側が行う）。
+- `src/entrypoints/extract.ts` / `extract-selection.ts` / `extract-origins.ts` — `scripting.executeScript` で必要時のみ注入する読み取り専用スクリプト（ページ本文 / 選択テキスト / URL にホスト名がないフレームの実際のオリジン（除外判定用））。main の戻り値が `executeScript` の結果になる。中身は `src/lib/extract/page.ts` / `selection.ts`（注入スクリプトを小さく保つため zod 等は import しない。戻り値の検証は `src/lib/extract/schema.ts` で background 側が行う）。
 - `src/entrypoints/sidepanel/` — ジョブ受信、AI 呼び出し（ストリーミング）、結果表示。**API 呼び出しはここで行う**（Service Worker は停止しうるため）。受信・送信の状態管理は `use-summary.ts`。
 - `src/entrypoints/options/` — API キー（プロバイダごと）・使用する AI・除外ドメイン。
 - `src/lib/context-menu.ts` — メニュー定義とクリック処理（`sidePanel.open()` を await 前に呼ぶ規約をここでテストしている）。

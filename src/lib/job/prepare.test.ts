@@ -74,6 +74,54 @@ describe("prepareJob", () => {
     expect(JSON.stringify(job)).not.toContain("ページ本文");
   });
 
+  describe("URL にホスト名がないフレーム（about:srcdoc 等）", () => {
+    const opaque = { ...context, pageUrl: "https://news.example/", frameUrl: "about:srcdoc" };
+    const origins = [
+      "https://login.bank.example",
+      "https://login.bank.example",
+      "https://news.example",
+    ];
+    const dispatch =
+      (originsResult: unknown): PrepareJobDeps["runScript"] =>
+      async (file) =>
+        file === "/extract-origins.js" ? originsResult : { ...page, url: "about:srcdoc" };
+
+    it("コンテンツの取得より前に実際のオリジン・祖先オリジンで判定し、一致したら取得しない", async () => {
+      const deps = createDeps(dispatch(origins));
+      deps.getExcludedDomains.mockResolvedValue(["*.bank.example"]);
+      const job = await prepareJob(pageTarget, opaque, deps);
+
+      expect(job).toMatchObject({ kind: "error", error: "excludedDomain" });
+      expect(deps.runScript).toHaveBeenCalledExactlyOnceWith("/extract-origins.js", {
+        tabId: 10,
+        frameId: 0,
+      });
+    });
+
+    it("一致しなければ取得し、送信直前の判定用にオリジンのホスト名をジョブに保存する", async () => {
+      const deps = createDeps(dispatch(origins));
+      deps.getExcludedDomains.mockResolvedValue(["intranet.example"]);
+      const job = await prepareJob(pageTarget, opaque, deps);
+
+      expect(job).toMatchObject({ kind: "content" });
+      expect(job.hostnames).toEqual(["news.example", "login.bank.example"]);
+      expect(deps.runScript.mock.calls.map(([file]) => file)).toEqual([
+        "/extract-origins.js",
+        "/extract.js",
+      ]);
+    });
+
+    it.each([
+      ["注入に失敗", () => Promise.reject(new Error("Cannot access"))],
+      ["不正な戻り値", async () => ({ origin: 1 })],
+    ])("オリジンを確認できなければ（%s）取得しない", async (_label, runScript) => {
+      const deps = createDeps(runScript);
+      const job = await prepareJob(selectionTarget, opaque, deps);
+      expect(job).toMatchObject({ kind: "error", error: "unreadablePage" });
+      expect(deps.runScript).toHaveBeenCalledOnce();
+    });
+  });
+
   it("除外ドメインに一致しなければ取得する", async () => {
     const deps = createDeps(async () => page);
     deps.getExcludedDomains.mockResolvedValue(["bank.example"]);
