@@ -223,7 +223,7 @@ user:
 
 ## 5. 品質ゲート
 
-`package.json` の scripts。`build:e2e` / `test:e2e` は M2 で追加する。
+`package.json` の scripts。
 
 | コマンド | 内容 |
 |---|---|
@@ -235,11 +235,11 @@ user:
 | `pnpm typecheck` | `wxt prepare && tsc --noEmit` |
 | `pnpm test` | `vitest run`（単体） |
 | `pnpm test:build` | 本番ビルド出力の検査（manifest の権限・CSP のスナップショット比較、テスト専用マーカーの混入検査）。`pnpm build` の後に実行 |
-| `pnpm build:e2e` | E2E 用ビルド（`wxt build --mode e2e`、出力は本番と別ディレクトリ `.output/e2e/`。モックプロバイダを含む） |
-| `pnpm test:e2e` | Playwright（`build:e2e` の出力を読み込み、モックプロバイダで検証） |
+| `pnpm build:e2e` | E2E 用ビルド（`wxt build --mode e2e`、出力は本番と別ディレクトリ `.output/chrome-mv3-e2e/`。モックプロバイダを含む） |
+| `pnpm test:e2e` | Playwright（`build:e2e` の出力を読み込み、モックプロバイダで検証）。`PLAYWRIGHT_CHROMIUM_EXECUTABLE` でインストール済みの Chromium を指定できる |
 | `pnpm check` | lint + typecheck + test をまとめて実行（PR 前に必須） |
 
-CI（GitHub Actions）は `pnpm install --frozen-lockfile` → `pnpm audit --prod` → `check` → `build`（本番）→ `test:build`（manifest スナップショット・テスト専用マーカー検査）→ `build:e2e` → `test:e2e`（M2 以降）を実行し、**本番ビルド**（`.output/chrome-mv3`）をアーティファクトとして保存する。E2E 用ビルドは配布しない。
+CI（GitHub Actions）は `pnpm install --frozen-lockfile` → `pnpm audit --prod` → `check` → `build`（本番）→ `test:build`（manifest スナップショット・テスト専用マーカー検査）→ `build:e2e` → Playwright の Chromium の導入 → `test:e2e` を実行し、**本番ビルド**（`.output/chrome-mv3`）をアーティファクトとして保存する。E2E 用ビルドは配布しない。
 
 ## 6. テスト戦略
 
@@ -254,3 +254,9 @@ CI（GitHub Actions）は `pnpm install --frozen-lockfile` → `pnpm audit --pro
 
 - **CI・テストで実 API を呼ばない。** 実 API 疎通は手動確認のみ。
 - テスト専用コード（モックプロバイダ等）は `src/testing/` に置き、マーカー文字列 `__AICM_TEST_ONLY__` を含める。読み込みは `import.meta.env.MODE === "e2e"` の分岐内の動的 import に限定し、本番ビルドではツリーシェイクで到達不能にする。上記の出力検査でこれを保証する（manifest スナップショットだけでは manifest を変えないモジュールの混入を検出できないため）。
+- E2E（`tests/e2e/`）の構成:
+  - 拡張を読み込んだ Chromium をテストごとに起動し（新しいプロファイル）、テスト用ページは Node のローカルサーバー（`http://localhost:<port>`）で配信する。
+  - Playwright はネイティブのコンテキストメニューとサイドパネルを操作できない。そのため E2E 用ビルドの background（`src/testing/e2e-background.ts`）が、拡張のページからのメッセージで本番と同じクリック処理（除外判定・抽出・ジョブ書き込み）を呼ぶ。サイドパネルは同じウィンドウのタブで開く。`sidePanel.open()` をユーザー操作の中で呼ぶ規約は単体テスト（`lib/context-menu.test.ts`）で検査する。
+  - メニューのクリックでは activeTab が付与されないため、**E2E 用ビルドの manifest にだけ** `http://localhost/*` の host_permission を加える（本番の manifest は `test:build` で固定）。
+  - プロバイダはモック（`src/testing/mock-provider.ts`）に差し替え、受け取ったリクエストをページ内に記録してテストから検証する。本文中の指示（`E2E_SLOW` / `E2E_ERROR:<種別>` / `E2E_MAX_TOKENS`）で応答を変える。念のため実 API のホストへのリクエストは遮断し、発生したらテストを失敗にする。
+  - Playwright は拡張の Service Worker を検出できないことがあるため、ストレージの準備やフックの呼び出しは、インストール時に開く設定画面のページから行う。

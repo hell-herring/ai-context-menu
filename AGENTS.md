@@ -12,7 +12,7 @@ AI コーディングエージェント（Claude Code, Codex, Copilot 等）向�
 - 対応プロバイダは Anthropic / OpenAI の公式 API（Gemini は Phase 2 で追加予定。MVP では実装しない）。**ローカル LLM・任意エンドポイントは非対応**、Web UI（chatgpt.com 等）への受け渡しも実装しない。
 - **Chrome ウェブストアでは公開しない**（手動インストールで個人利用）。
 
-**現在のフェーズ: M2（MVP）実装中。** 右クリック → 選択テキストまたはページ本文を取得 → Anthropic / OpenAI にストリーミングで要約 → サイドパネルに表示、までが動く。除外ドメイン・設定画面（API キーと接続テスト・モデル・使用する AI・出力言語・上限・送信前確認・除外ドメイン）・モデルのコンテキスト長判定・サイドパネルでのプロバイダ/モデル/プリセット切り替えに対応済み。最近の要約・E2E（Playwright）は M2 の残り。
+**現在のフェーズ: M2（MVP）実装中。** 右クリック → 選択テキストまたはページ本文を取得 → Anthropic / OpenAI にストリーミングで要約 → サイドパネルに表示、までが動く。除外ドメイン・設定画面（API キーと接続テスト・モデル・使用する AI・出力言語・上限・送信前確認・除外ドメイン）・モデルのコンテキスト長判定・サイドパネルでのプロバイダ/モデル/プリセット切り替え・E2E テスト（Playwright）に対応済み。最近の要約は M2 の残り。
 
 ## 必読ドキュメント
 
@@ -41,9 +41,11 @@ pnpm format           # biome format --write .
 pnpm typecheck        # wxt prepare && tsc --noEmit
 pnpm test             # vitest run（src/**/*.test.ts, tests/unit/）
 pnpm test:build       # build 後に実行。manifest の権限・CSP の固定とテスト専用マーカー混入の検査（tests/build/）
+pnpm build:e2e        # E2E 用ビルド（モックプロバイダ入り。.output/chrome-mv3-e2e。配布禁止）
+pnpm test:e2e         # build:e2e 後に実行。Playwright（tests/e2e/）。実 API は呼ばない
 ```
 
-M2 で追加予定: `pnpm build:e2e`（モックプロバイダ入り E2E 用ビルド、`.output/e2e`。配布禁止）/ `pnpm test:e2e`（Playwright、実 API は呼ばない）。
+`test:e2e` は Playwright の Chromium を使う（`pnpm exec playwright install chromium`）。インストール済みの Chromium を使う場合は `PLAYWRIGHT_CHROMIUM_EXECUTABLE` にパスを指定する。
 
 Node.js は `.node-version`（26）、pnpm は `package.json` の `packageManager`（12.x）に合わせる。pnpm の設定は `pnpm-workspace.yaml` に書く（pnpm 11 以降 `.npmrc` は認証・レジストリ以外を読まない）。
 - 依存は `^` / `~` なしの固定バージョン（`saveExact: true`）。`pnpm add pkg@24` のように範囲で指定すると `^` が付くので、`pnpm add pkg@24.13.6` と完全な版を指定する。`tests/unit/package-json.test.ts` で検査している。
@@ -64,6 +66,7 @@ Node.js は `.node-version`（26）、pnpm は `package.json` の `packageManage
 - `src/lib/storage/` — zod スキーマ付きのストレージアクセス（`schema.ts` / `settings.ts` / `secrets.ts` / `session.ts`）。直接 `chrome.storage` を触らずここを経由する。`settings.core` の更新は `updateCoreSettings()`（同じページ内の書き込みを直列化し、関数を渡すと最新の値から更新内容を決める）を通す。`job.<windowId>` への書き込みは `JobWriter`（世代確認・直列キュー）を必ず通す。`storage.sync` への書き込みは `sync-quota.ts` の `setSyncItem()`（UTF-8 バイト数の検査）を通す。
 - `src/lib/domain/` — 除外ドメインのパターン正規化と判定（ページ URL・フレーム URL の両方）。background（取得前）とサイドパネル（プロバイダ呼び出しの直前に毎回）で使う。
 - `src/components/MarkdownView.tsx` — AI 出力の安全な描画（生 HTML 無効・http(s) のリンクのみ・画像はリンクに置換）。
+- `src/testing/` — **E2E 用ビルド専用**のコード（モックプロバイダ、メニューのクリックを再現するフック）。マーカー `__AICM_TEST_ONLY__` を含め、`import.meta.env.MODE === "e2e"` の分岐内の動的 import からだけ読み込む（本番ビルドに入らないことを `test:build` で検査）。E2E 用ビルドの manifest にだけ `http://localhost/*` を追加する（`wxt.config.ts`）。
 
 詳細は [docs/tech-stack.md §4](./docs/tech-stack.md#4-アーキテクチャ)。
 
@@ -96,7 +99,7 @@ Node.js は `.node-version`（26）、pnpm は `package.json` の `packageManage
 
 1. 関連する `docs/` を読み、変更が仕様・ガードレールに沿うか確認する。
 2. 小さく実装し、純粋ロジックにはテストを追加する。
-3. 完了前に `pnpm check` を実行し、すべて通すこと。UI に関わる変更は `pnpm build` 後に E2E か手動で動作確認する。
+3. 完了前に `pnpm check` を実行し、すべて通すこと。UI に関わる変更は `pnpm build:e2e` → `pnpm test:e2e` を通し、必要なら E2E を追加する（手動確認で補ってもよい）。
 4. 仕様・設計を変えた場合は同じ変更で `docs/` と本ファイルを更新する。
 5. [docs/guardrails.md §7](./docs/guardrails.md#7-ガードレールのチェックリストレビュー用) のチェックリストを自己確認する。
 
