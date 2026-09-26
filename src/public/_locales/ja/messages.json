@@ -1,0 +1,21 @@
+{
+  "extName": {
+    "message": "AI Context Menu",
+    "description": "拡張機能名。コンテキストメニューの親項目名にも使う"
+  },
+  "extDescription": {
+    "message": "右クリックで選択テキストやページ本文を AI に要約させ、サイドパネルに表示します。"
+  },
+  "menuSummary": {
+    "message": "要約する"
+  },
+  "menuTldr3": {
+    "message": "3行で要約"
+  },
+  "menuBullets": {
+    "message": "要点を箇条書き"
+  },
+  "sidePanelEmpty": {
+    "message": "ページ上で右クリックし、「AI Context Menu」から要約を選んでください。"
+  }
+}

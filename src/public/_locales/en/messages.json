@@ -1,0 +1,21 @@
+{
+  "extName": {
+    "message": "AI Context Menu",
+    "description": "Extension name. Also used as the parent context menu title"
+  },
+  "extDescription": {
+    "message": "Summarize selected text or the page with AI from the context menu and view the result in the side panel."
+  },
+  "menuSummary": {
+    "message": "Summarize"
+  },
+  "menuTldr3": {
+    "message": "Summarize in 3 lines"
+  },
+  "menuBullets": {
+    "message": "Key points as bullets"
+  },
+  "sidePanelEmpty": {
+    "message": "Right-click on a page and choose a summary from \"AI Context Menu\"."
+  }
+}

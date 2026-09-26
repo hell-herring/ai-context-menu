@@ -1,0 +1,24 @@
+# 依存
+node_modules/
+
+# WXT 生成物（コミットしない）
+.output/
+.wxt/
+web-ext.config.ts
+
+# テスト
+coverage/
+test-results/
+playwright-report/
+
+# 環境変数・秘密情報
+.env
+.env.*
+!.env.example
+
+# エディタ・OS
+.DS_Store
+*.log
+.vscode/*
+!.vscode/extensions.json
+.idea/

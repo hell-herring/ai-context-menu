@@ -12,7 +12,7 @@ AI コーディングエージェント（Claude Code, Codex, Copilot 等）向�
 - 対応プロバイダは Anthropic / OpenAI の公式 API（Gemini は Phase 2 で追加予定。MVP では実装しない）。**ローカル LLM・任意エンドポイントは非対応**、Web UI（chatgpt.com 等）への受け渡しも実装しない。
 - **Chrome ウェブストアでは公開しない**（手動インストールで個人利用）。
 
-**現在のフェーズ: 設計完了・実装前（M0 未着手）。** コードはまだ存在しない。以下のコマンド・構成は予定であり、スキャフォールド時に実態と合わせて本ファイルを更新すること。
+**現在のフェーズ: M0（雛形）完了・M1（最小縦串）未着手。** 右クリックメニューの登録と空のサイドパネルを開くところまで実装済み。E2E（Playwright）は M2 で追加する。
 
 ## 必読ドキュメント
 
@@ -28,27 +28,34 @@ AI コーディングエージェント（Claude Code, Codex, Copilot 等）向�
 
 WXT（Vite）/ TypeScript strict / React / Tailwind CSS v4 / react-markdown / @mozilla/readability / @anthropic-ai/sdk / openai / zod / Biome / Vitest / Playwright / pnpm / Node.js 24 LTS
 
-## コマンド（予定）
+## コマンド
 
 ```bash
-pnpm install          # 依存導入（CI は --frozen-lockfile）
+pnpm install          # 依存導入（CI は --frozen-lockfile）。postinstall で wxt prepare が走る
 pnpm dev              # 開発サーバー（拡張を読み込んだ Chrome を起動）
 pnpm build            # 本番ビルド → .output/chrome-mv3
+pnpm zip              # 手動インストール用 zip（ストアには提出しない）
 pnpm check            # lint + typecheck + test（作業完了前に必ず実行）
 pnpm lint             # biome ci .
 pnpm format           # biome format --write .
 pnpm typecheck        # wxt prepare && tsc --noEmit
-pnpm test             # vitest run
-pnpm build:e2e        # E2E 用ビルド（モックプロバイダ入り、.output/e2e。配布禁止）
-pnpm test:e2e         # Playwright（build:e2e の出力を使用、実 API は呼ばない）
+pnpm test             # vitest run（src/**/*.test.ts, tests/unit/）
+pnpm test:build       # build 後に実行。manifest の権限・CSP の固定とテスト専用マーカー混入の検査（tests/build/）
 ```
+
+M2 で追加予定: `pnpm build:e2e`（モックプロバイダ入り E2E 用ビルド、`.output/e2e`。配布禁止）/ `pnpm test:e2e`（Playwright、実 API は呼ばない）。
+
+Node.js は `.node-version`（24）、pnpm は `package.json` の `packageManager` に合わせる。依存は `^` なしの固定バージョン（`.npmrc` の `save-exact`）。
 
 ## アーキテクチャの要点
 
+- `wxt.config.ts` — manifest 定義。**権限はここだけで管理**し、変更したら `tests/build/manifest.test.ts` の期待値も更新する（人間の承認必須）。権限は §2 の一覧のうち、使うマイルストーンで必要になったものだけを追加する（M0 時点: `contextMenus`, `sidePanel`）。自動インポートは無効（`imports: false`）なので `browser` 等は明示的に import する。
 - `src/entrypoints/background.ts` — コンテキストメニュー、`sidePanel.open()`、除外判定、コンテンツ取得、`storage.session` へジョブ書き込み。**短命な処理のみ。**
 - `src/entrypoints/extract.ts` — `scripting.executeScript` で必要時のみ注入する読み取り専用スクリプト。
 - `src/entrypoints/sidepanel/` — ジョブ受信、AI 呼び出し（ストリーミング）、結果表示。**API 呼び出しはここで行う**（Service Worker は停止しうるため）。
 - `src/entrypoints/options/` — API キー・設定。
+- `src/lib/context-menu.ts` — メニュー定義とクリック処理（`sidePanel.open()` を await 前に呼ぶ規約をここでテストしている）。
+- `src/lib/i18n.ts` — `t(key)`。キーは `ja/messages.json` から型付け。ロケール間のキー一致は `tests/unit/locales.test.ts` で検査。
 - `src/lib/providers/` — `Provider` インターフェイス（`listModels` / `verifyKey` / `stream`）とプロバイダ別アダプタ。UI は SDK 型に直接依存しない。
 - `src/lib/prompt/` — プロンプト生成（純粋関数・スナップショットテスト対象）。
 - `src/lib/storage/` — zod スキーマ付きのストレージアクセス。直接 `chrome.storage` を触らずここを経由する。
