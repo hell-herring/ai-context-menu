@@ -26,13 +26,19 @@ export function App() {
   const [keys, setKeys] = useState<StoredKeys | undefined>(undefined);
   const [settings, setSettings] = useState<CoreSettings | undefined>(undefined);
   /**
-   * キーを保存・削除するたびに増やす版数。マスク表示（末尾 4 文字）は別のキーでも同じになりうるため、
-   * キーが変わったこと（古いキーで取得したモデル一覧を捨てること）はこちらで判定する
+   * キーの保存・削除を始めたとき・終えたときに増やす版数。マスク表示（末尾 4 文字）は別のキーでも
+   * 同じになりうるため、キーが変わったこと（古いキーで取得したモデル一覧を使わないこと）はこちらで判定する。
+   * 非同期処理の途中で最新の値を読めるよう ref に持ち、再描画用に state にも写す
    */
-  const [keyVersions, setKeyVersions] = useState<Record<ProviderId, number>>({
-    anthropic: 0,
-    openai: 0,
-  });
+  const keyVersionsRef = useRef<Record<ProviderId, number>>({ anthropic: 0, openai: 0 });
+  const [keyVersions, setKeyVersions] = useState(keyVersionsRef.current);
+  const bumpKeyVersion = useCallback((provider: ProviderId) => {
+    keyVersionsRef.current = {
+      ...keyVersionsRef.current,
+      [provider]: keyVersionsRef.current[provider] + 1,
+    };
+    setKeyVersions(keyVersionsRef.current);
+  }, []);
   const [loadError, setLoadError] = useState(false);
   /** キーの登録状況（保存・削除の処理順に更新する。描画時点の値ではなくこちらで既定プロバイダを判定する） */
   const registeredRef = useRef<Record<ProviderId, boolean> | undefined>(undefined);
@@ -65,7 +71,7 @@ export function App() {
 
   const onKeyChange = useCallback(
     (provider: ProviderId, masked: string | undefined) => {
-      setKeyVersions((current) => ({ ...current, [provider]: current[provider] + 1 }));
+      bumpKeyVersion(provider);
       const task = queueRef.current.then(async () => {
         const before = registeredRef.current;
         if (!before) {
@@ -88,7 +94,7 @@ export function App() {
       queueRef.current = task.catch(() => {});
       return task;
     },
-    [saveSettings],
+    [saveSettings, bumpKeyVersion],
   );
 
   return (
@@ -117,12 +123,14 @@ export function App() {
               key={provider}
               provider={provider}
               stored={keys[provider]}
+              onChangeStart={() => bumpKeyVersion(provider)}
               onChange={(masked) => onKeyChange(provider, masked)}
             >
               <ModelSection
                 provider={provider}
                 hasKey={keys[provider] !== undefined}
                 keyVersion={keyVersions[provider]}
+                getKeyVersion={() => keyVersionsRef.current[provider]}
                 settings={settings}
                 onSave={saveSettings}
               />

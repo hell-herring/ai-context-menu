@@ -31,6 +31,7 @@ const PLACEHOLDERS: Record<ProviderId, string> = {
 export function ApiKeySection({
   provider,
   stored,
+  onChangeStart,
   onChange,
   children,
 }: {
@@ -39,6 +40,8 @@ export function ApiKeySection({
   stored: string | undefined;
   /** 保存・削除の後に呼ぶ。引数は新しいマスク済みのキー */
   onChange: (masked: string | undefined) => Promise<void>;
+  /** 保存・削除を始める直前に呼ぶ（古いキーで取得したモデル一覧を、書き込みの途中から使わせないため） */
+  onChangeStart: () => void;
   children?: ReactNode;
 }) {
   const headingId = useId();
@@ -76,6 +79,7 @@ export function ApiKeySection({
         return;
       }
       try {
+        onChangeStart();
         await setApiKey(provider, apiKey);
         setInput("");
         await onChange(maskApiKey(apiKey));
@@ -89,6 +93,7 @@ export function ApiKeySection({
   const remove = () =>
     exclusive(async () => {
       try {
+        onChangeStart();
         await removeApiKey(provider);
         await onChange(undefined);
         setNotice({ message: t("optionsDeleted"), tone: "success" });
