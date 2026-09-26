@@ -411,5 +411,33 @@
         "content": "$2"
       }
     }
+  },
+  "errorContextLength": {
+    "message": "入力がモデルの扱える長さ（コンテキスト長）を超えています。設定の最大入力文字数や最大出力トークンを減らしてください"
+  },
+  "modelOverflow": {
+    "message": "選択中のモデル（$MODEL$）の入力上限に収まりません。推定 $TOKENS$ トークン / 使える量 $BUDGET$ トークン（入力上限から最大出力トークンを差し引いた量）",
+    "placeholders": {
+      "model": {
+        "content": "$1"
+      },
+      "tokens": {
+        "content": "$2"
+      },
+      "budget": {
+        "content": "$3"
+      }
+    }
+  },
+  "buttonSendFitted": {
+    "message": "モデルに収まる長さまで送信"
+  },
+  "sourceFittedToModel": {
+    "message": "モデルの入力上限に収まるよう、本文を先頭から $CHARS$ 文字に短縮して送信しました",
+    "placeholders": {
+      "chars": {
+        "content": "$1"
+      }
+    }
   }
 }

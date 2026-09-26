@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { browser } from "wxt/browser";
 import { isExcludedJob, JobReceiver, needsConfirmation } from "../../lib/job/receive";
-import { buildPrompt, describeOutputLanguage } from "../../lib/prompt/build";
-import { effectiveMaxOutputTokens } from "../../lib/providers/limits";
+import {
+  approvalOf,
+  type ModelFitApproval,
+  type ModelOverflow,
+  planRequest,
+  type RequestPlan,
+} from "../../lib/job/request";
 import { PROVIDERS } from "../../lib/providers/registry";
 import { resolveProvider } from "../../lib/providers/select";
 import {
@@ -12,7 +17,7 @@ import {
   type StopReason,
   type Usage,
 } from "../../lib/providers/types";
-import type { ContentJob, Job, JobErrorCode } from "../../lib/storage/schema";
+import type { ContentJob, CoreSettings, Job, JobErrorCode } from "../../lib/storage/schema";
 import { getApiKeys } from "../../lib/storage/secrets";
 import { readJob, removeJob, watchJob } from "../../lib/storage/session";
 import { getCoreSettings, getExcludedDomains } from "../../lib/storage/settings";
@@ -20,7 +25,8 @@ import { getCoreSettings, getExcludedDomains } from "../../lib/storage/settings"
 export type Phase =
   /** 受け取ったジョブの送信前の判定中（設定の読み込み中） */
   | { kind: "preparing" }
-  | { kind: "confirm" }
+  /** 送信前の確認。`overflow` は選択中のモデルの入力上限に収まらない場合の内訳 */
+  | { kind: "confirm"; overflow: ModelOverflow | undefined }
   | { kind: "cancelled" }
   | { kind: "streaming" }
   | { kind: "done"; stopReason: StopReason; usage: Usage | undefined }
@@ -37,7 +43,42 @@ export type PanelState =
       target: { provider: ProviderId; model: string } | undefined;
       phase: Phase;
       text: string;
+      /**
+       * ユーザーが「モデルに収まる長さまで送信」を選んだときの条件（再生成でも、条件が同じなら同じ扱いにする）
+       */
+      fitApproval: ModelFitApproval | undefined;
+      /** モデルに収めるために本文を切り詰めて送った場合、送った本文の文字数 */
+      fittedChars: number | undefined;
     };
+
+type ApiKeys = Awaited<ReturnType<typeof getApiKeys>>;
+
+/** 使用するプロバイダとキー（設定のプロバイダにキーがなければキーのある最初のもの） */
+function resolveTarget(settings: CoreSettings, apiKeys: ApiKeys) {
+  const provider = resolveProvider(settings.defaultProvider, {
+    anthropic: apiKeys.anthropic !== undefined,
+    openai: apiKeys.openai !== undefined,
+  });
+  const apiKey = provider && apiKeys[provider];
+  return provider && apiKey ? { provider, apiKey } : undefined;
+}
+
+/**
+ * ジョブを受け取った時点での、選択中のモデルのコンテキスト長による判定。
+ * 収まらない（`overflow`）・本文を空にしても収まらない（`tooLong`）場合にその結果を返す
+ */
+function receivedModelCheck(
+  job: ContentJob,
+  settings: CoreSettings,
+  apiKeys: ApiKeys,
+): Exclude<RequestPlan, { kind: "ready" }> | undefined {
+  const target = resolveTarget(settings, apiKeys);
+  if (!target) {
+    return undefined;
+  }
+  const plan = planRequest(job, settings, target.provider, browser.i18n.getUILanguage(), undefined);
+  return plan.kind === "ready" ? undefined : plan;
+}
 
 /**
  * サイドパネルのジョブ受信と AI 呼び出し。
@@ -61,7 +102,7 @@ export function useSummary() {
   }, []);
 
   const send = useCallback(
-    async (job: ContentJob) => {
+    async (job: ContentJob, fitApproval: ModelFitApproval | undefined) => {
       cancelRun();
       const run = runRef.current;
       const controller = new AbortController();
@@ -78,7 +119,15 @@ export function useSummary() {
         );
       };
 
-      setState({ kind: "summary", job, target: undefined, phase: { kind: "streaming" }, text: "" });
+      setState({
+        kind: "summary",
+        job,
+        target: undefined,
+        phase: { kind: "streaming" },
+        text: "",
+        fitApproval,
+        fittedChars: undefined,
+      });
 
       // 受信したテキストは描画フレームごとにまとめて反映する
       let text = "";
@@ -98,37 +147,40 @@ export function useSummary() {
           update({ phase: { kind: "error", error: "excludedDomain" } });
           return;
         }
-        const provider = resolveProvider(settings.defaultProvider, {
-          anthropic: apiKeys.anthropic !== undefined,
-          openai: apiKeys.openai !== undefined,
-        });
-        const apiKey = provider && apiKeys[provider];
-        if (!provider || !apiKey) {
+        const target = resolveTarget(settings, apiKeys);
+        if (!target) {
           update({ phase: { kind: "error", error: "apiKeyMissing" } });
           return;
         }
+        const { provider, apiKey } = target;
         const model = settings.models[provider];
         update({ target: { provider, model } });
 
-        const prompt = buildPrompt({
-          presetId: job.presetId,
-          outputLanguage: describeOutputLanguage(
-            settings.outputLanguage,
-            browser.i18n.getUILanguage(),
-          ),
-          document: {
-            title: job.source.title,
-            url: job.source.providerUrl,
-            source: job.source.type,
-            content: job.source.text,
-          },
-        });
+        // 送信直前にも、その時点の設定のモデルのコンテキスト長で判定する（docs/spec.md §3.3）
+        // 確認したときとプロバイダ・モデル・使える量が変わっていれば、切り詰めずに確認に戻す
+        const plan = planRequest(
+          job,
+          settings,
+          provider,
+          browser.i18n.getUILanguage(),
+          fitApproval,
+        );
+        if (plan.kind === "overflow") {
+          // 黙って切り詰めず、確認に戻す
+          update({ phase: { kind: "confirm", overflow: plan.overflow } });
+          return;
+        }
+        if (plan.kind === "tooLong") {
+          update({ phase: { kind: "error", error: "context_length" } });
+          return;
+        }
+        update({ fittedChars: plan.fittedChars });
 
         const events = PROVIDERS[provider].stream(apiKey, {
-          ...prompt,
+          ...plan.prompt,
           model,
           // 選択モデルの出力上限が分かる場合はそれを超えない（docs/spec.md §3.6）
-          maxOutputTokens: effectiveMaxOutputTokens(settings, provider),
+          maxOutputTokens: plan.maxOutputTokens,
           signal: controller.signal,
         });
         for await (const event of events) {
@@ -169,21 +221,48 @@ export function useSummary() {
         return;
       }
       // 設定を読む前に表示を新しいジョブに置き換え、前のジョブの確認・再生成ボタンを押せないようにする
-      setState({ kind: "summary", job, target: undefined, phase: { kind: "preparing" }, text: "" });
-      // 設定を読めなければ確認する側に倒す
-      const mode = await getCoreSettings().then(
-        (settings) => settings.confirmBeforeSend,
-        () => "always" as const,
-      );
+      setState({
+        kind: "summary",
+        job,
+        target: undefined,
+        phase: { kind: "preparing" },
+        text: "",
+        fitApproval: undefined,
+        fittedChars: undefined,
+      });
+      const [settings, apiKeys] = await Promise.all([
+        getCoreSettings().catch(() => undefined),
+        getApiKeys().catch(() => undefined),
+      ]);
       // 設定を読む間に次のジョブを受け取っていたら何もしない
       if (runRef.current !== run) {
         return;
       }
-      // 上限超過・メタデータ短縮は設定に関わらず、黙って送らずに確認する
-      if (needsConfirmation(job, mode)) {
-        setState({ kind: "summary", job, target: undefined, phase: { kind: "confirm" }, text: "" });
+      // 設定を読めなければ確認する側に倒す
+      const mode = settings?.confirmBeforeSend ?? "always";
+      const check = settings && apiKeys ? receivedModelCheck(job, settings, apiKeys) : undefined;
+      const summary = { kind: "summary", job, target: undefined, text: "" } as const;
+      if (check?.kind === "tooLong") {
+        // どう切り詰めても送れないため、確認を出さずにエラーにする
+        setState({
+          ...summary,
+          phase: { kind: "error", error: "context_length" },
+          fitApproval: undefined,
+          fittedChars: undefined,
+        });
+        return;
+      }
+      const overflow: ModelOverflow | undefined = check?.overflow;
+      // 上限超過・メタデータ短縮・モデルの入力上限の超過は設定に関わらず、黙って送らずに確認する
+      if (needsConfirmation(job, mode) || overflow) {
+        setState({
+          ...summary,
+          phase: { kind: "confirm", overflow },
+          fitApproval: undefined,
+          fittedChars: undefined,
+        });
       } else {
-        void send(job);
+        void send(job, undefined);
       }
     },
     [cancelRun, send],
@@ -233,10 +312,14 @@ export function useSummary() {
 
   return {
     state,
-    /** 確認後に送信する（oversize のジョブは切り詰め済みの本文を送る） */
+    /**
+     * 確認後に送信する（oversize のジョブは切り詰め済みの本文を送る）。
+     * モデルの入力上限の超過を表示していた場合は、モデルに収まる長さまで切り詰めて送る
+     */
     confirm: useCallback(() => {
       if (current?.phase.kind === "confirm") {
-        void send(current.job);
+        const { overflow } = current.phase;
+        void send(current.job, overflow ? approvalOf(overflow) : current.fitApproval);
       }
     }, [current, send]),
     cancel: useCallback(() => {
@@ -247,7 +330,7 @@ export function useSummary() {
     stop: useCallback(() => controllerRef.current?.abort(), []),
     regenerate: useCallback(() => {
       if (current && current.phase.kind !== "preparing") {
-        void send(current.job);
+        void send(current.job, current.fitApproval);
       }
     }, [current, send]),
   };

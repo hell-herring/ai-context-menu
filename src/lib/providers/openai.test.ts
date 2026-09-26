@@ -202,7 +202,8 @@ describe("OpenAIProvider.stream", () => {
     [429, "rate_limit_exceeded", "rate_limit"],
     [500, "server_error", "overloaded"],
     [503, "server_error", "overloaded"],
-    [400, "context_length_exceeded", "bad_request"],
+    [400, "context_length_exceeded", "context_length"],
+    [400, "invalid_request_error", "bad_request"],
     [404, "model_not_found", "bad_request"],
   ])("HTTP %i（%s）→ %s に変換する", async (status, code, kind) => {
     const fetchMock = vi.fn<typeof fetch>(async () => jsonError(status, code));
@@ -224,6 +225,7 @@ describe("OpenAIProvider.stream", () => {
     ["server_error", "overloaded"],
     ["rate_limit_exceeded", "rate_limit"],
     ["invalid_prompt", "bad_request"],
+    ["context_length_exceeded", "context_length"],
   ])("response.failed（%s）→ %s", async (code, kind) => {
     const fetchMock = vi.fn<typeof fetch>(async () =>
       sse([
@@ -242,6 +244,16 @@ describe("OpenAIProvider.stream", () => {
       sse([{ type: "error", code: "server_error", message: "Overloaded", param: null }]),
     );
     expect((await streamError(fetchMock)).kind).toBe("overloaded");
+  });
+
+  it.each([
+    ["context_length_exceeded", "context_length"],
+    ["rate_limit_exceeded", "rate_limit"],
+  ])("ストリーム途中の error イベント（%s）→ %s", async (code, kind) => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      sse([{ type: "error", code, message: "failed", param: null }]),
+    );
+    expect((await streamError(fetchMock)).kind).toBe(kind);
   });
 
   it("終了イベントの前にストリームが閉じたら network", async () => {

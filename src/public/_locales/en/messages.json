@@ -411,5 +411,33 @@
         "content": "$2"
       }
     }
+  },
+  "errorContextLength": {
+    "message": "The input exceeds the model's context length. Reduce the maximum input characters or maximum output tokens in the settings"
+  },
+  "modelOverflow": {
+    "message": "This does not fit the input limit of the selected model ($MODEL$): about $TOKENS$ tokens, but only $BUDGET$ tokens are available (the input limit minus the maximum output tokens)",
+    "placeholders": {
+      "model": {
+        "content": "$1"
+      },
+      "tokens": {
+        "content": "$2"
+      },
+      "budget": {
+        "content": "$3"
+      }
+    }
+  },
+  "buttonSendFitted": {
+    "message": "Send what fits the model"
+  },
+  "sourceFittedToModel": {
+    "message": "The content was shortened to the first $CHARS$ characters to fit the model's input limit",
+    "placeholders": {
+      "chars": {
+        "content": "$1"
+      }
+    }
   }
 }
