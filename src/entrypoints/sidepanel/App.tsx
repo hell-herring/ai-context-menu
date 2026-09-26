@@ -9,7 +9,6 @@ import { type PanelState, type Phase, useSummary } from "./use-summary";
 
 const JOB_ERROR_MESSAGES = {
   editable: "errorEditable",
-  selectionUnsupported: "errorSelectionUnsupported",
   unreadablePage: "errorUnreadablePage",
   emptyContent: "errorEmptyContent",
   tooLarge: "errorTooLarge",

@@ -39,7 +39,8 @@ export const SOURCE_TYPES = ["page", "selection"] as const;
 
 export type SourceType = (typeof SOURCE_TYPES)[number];
 
-export const EXTRACT_METHODS = ["readability", "text"] as const;
+/** 取得方法。readability / text はページ本文、selection は選択テキスト */
+export const EXTRACT_METHODS = ["readability", "text", "selection"] as const;
 
 export type ExtractMethod = (typeof EXTRACT_METHODS)[number];
 
@@ -51,8 +52,6 @@ export type OversizeReason = (typeof OVERSIZE_REASONS)[number];
 export const JOB_ERROR_CODES = [
   /** 入力欄・contenteditable 内でのクリック */
   "editable",
-  /** 選択テキストの要約（M2 で対応） */
-  "selectionUnsupported",
   /** chrome:// 等、拡張から読み取れないページ */
   "unreadablePage",
   /** 要約するテキストがない */

@@ -149,9 +149,6 @@
   "errorEditable": {
     "message": "入力欄内のテキストは要約できません"
   },
-  "errorSelectionUnsupported": {
-    "message": "選択テキストの要約にはまだ対応していません。選択を解除してからページ上で右クリックしてください"
-  },
   "errorUnreadablePage": {
     "message": "このページは拡張から読み取れません"
   },

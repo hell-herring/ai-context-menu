@@ -66,7 +66,7 @@
 
 ```
 ┌────────────── Web ページ (タブ) ──────────────┐
-│  extract.js (unlisted script, 必要時のみ注入)   │
+│  extract*.js (unlisted script, 必要時のみ注入)  │
 │   - getSelection() / Readability               │
 └──────────────▲──────────────────────────────┘
                │ scripting.executeScript (activeTab)
@@ -121,15 +121,16 @@
 ├── src/
 │   ├── entrypoints/
 │   │   ├── background.ts
-│   │   ├── extract.ts         # defineUnlistedScript: ページに注入する抽出処理
+│   │   ├── extract.ts         # defineUnlistedScript: ページに注入する本文抽出処理
+│   │   ├── extract-selection.ts # defineUnlistedScript: ページに注入する選択テキスト取得処理
 │   │   ├── sidepanel/         # index.html, main.tsx, App.tsx
 │   │   └── options/
 │   ├── lib/
 │   │   ├── context-menu.ts    # メニュー定義・クリック処理（sidePanel.open の呼び出し順を含む）
 │   │   ├── providers/         # types.ts, anthropic.ts, openai.ts, registry.ts
 │   │   ├── prompt/            # presets.ts, build.ts, escape.ts, tokens.ts
-│   │   ├── extract/           # 注入スクリプトの本体（page.ts）と戻り値の検証（schema.ts）
-│   │   ├── job/               # ジョブの組み立て（create.ts）とサイドパネルでの受信判定（receive.ts）
+│   │   ├── extract/           # 注入スクリプトの本体（page.ts / selection.ts）と戻り値の検証（schema.ts）
+│   │   ├── job/               # ジョブの組み立て（create.ts）、クリックからジョブを作る判定（prepare.ts）、サイドパネルでの受信判定（receive.ts）
 │   │   ├── storage/           # schema.ts, settings.ts, secrets.ts, session.ts
 │   │   ├── domain/            # 除外ドメイン判定など
 │   │   ├── safe-url.ts        # AI 出力内リンクの許可判定

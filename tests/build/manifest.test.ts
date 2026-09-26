@@ -57,6 +57,7 @@ describe("本番ビルドの manifest", () => {
   it("注入用の抽出スクリプトが出力されている（ページからは読み込めない）", async () => {
     const files = (await listFiles(OUTPUT_DIR)).map((file) => path.relative(OUTPUT_DIR, file));
     expect(files).toContain("extract.js");
+    expect(files).toContain("extract-selection.js");
   });
 });
 

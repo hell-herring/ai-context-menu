@@ -149,9 +149,6 @@
   "errorEditable": {
     "message": "Text inside input fields cannot be summarized"
   },
-  "errorSelectionUnsupported": {
-    "message": "Summarizing selected text is not supported yet. Clear the selection and right-click on the page"
-  },
   "errorUnreadablePage": {
     "message": "This page cannot be read by the extension"
   },
