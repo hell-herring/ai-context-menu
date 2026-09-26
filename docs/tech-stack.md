@@ -148,7 +148,10 @@
 │   ├── build/                 # 本番ビルド出力の検査（manifest 固定・テスト専用マーカー）
 │   ├── fixtures/              # 抽出テスト用 HTML
 │   └── e2e/
+├── scripts/setup-dev-env.sh    # web 版 Claude Code / Codex 共通の開発環境セットアップ（docs/dev-environment.md）
+├── .claude/                   # Claude Code の設定（SessionStart フックで上を実行）
 ├── .github/workflows/ci.yml
+├── .github/workflows/dev-env.yml # 開発環境セットアップの再現性の検証
 └── .github/dependabot.yml     # 依存・Actions の週次更新
 ```
 

@@ -31,11 +31,14 @@ pnpm check   # lint + typecheck + test
 
 コマンドの一覧と規約は [AGENTS.md](./AGENTS.md) を参照。
 
+web 版 Claude Code / web 版 Codex では `bash scripts/setup-dev-env.sh` で同じ開発環境（Node.js・pnpm・依存・E2E 用 Chromium）を揃える。Claude Code ではセッション開始時に自動で実行され、Codex では環境設定のセットアップスクリプトに指定する。詳細と制約は [開発環境](./docs/dev-environment.md) を参照。
+
 ## ドキュメント
 
 - [機能仕様](./docs/spec.md)
 - [技術選定とアーキテクチャ](./docs/tech-stack.md)
 - [ガードレール](./docs/guardrails.md)
+- [開発環境（web 版 Claude Code / Codex）](./docs/dev-environment.md)
 - [AGENTS.md](./AGENTS.md)（AI コーディングエージェント向けコンテキスト。`CLAUDE.md` から参照）
 
 ## ライセンス

@@ -1,0 +1,57 @@
+name: Dev environment
+
+# scripts/setup-dev-env.sh（web 版 Claude Code / web 版 Codex 共通の開発環境セットアップ）が、
+# 何も入っていない新しい環境でも同じ構成を再現できることを確認する
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - scripts/setup-dev-env.sh
+      - .claude/hooks/**
+      - .claude/settings.json
+      - .node-version
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - .github/workflows/dev-env.yml
+  pull_request:
+    paths: *paths
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  setup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: ShellCheck
+        run: shellcheck scripts/setup-dev-env.sh .claude/hooks/session-start.sh
+
+      # actions/setup-node・pnpm/action-setup は使わず、スクリプトだけで揃える
+      - name: Setup (first run)
+        run: bash scripts/setup-dev-env.sh
+
+      # 2 回目は何も取得せずに終わること（冪等性）
+      - name: Setup (second run)
+        run: bash scripts/setup-dev-env.sh
+
+      # 以降はスクリプトが ~/.profile に書いた PATH で動かす（ログインシェル）
+      - name: Check (lint + typecheck + test)
+        shell: bash -leo pipefail {0}
+        run: |
+          bash scripts/setup-dev-env.sh --check
+          pnpm check
+
+      - name: E2E
+        shell: bash -leo pipefail {0}
+        run: |
+          pnpm build:e2e
+          pnpm test:e2e
