@@ -178,7 +178,7 @@ AI Context Menu
 | 分類 | 要件 |
 |---|---|
 | 対応環境 | Chrome 116 以上（`sidePanel.open()` の要件）、Manifest V3 |
-| 配布 | ストア非公開。`pnpm build` の出力（`.output/chrome-mv3`）を `chrome://extensions` の「パッケージ化されていない拡張機能を読み込む」で導入する |
+| 配布 | ストア非公開。GitHub Release に添付した zip（タグ `v*` の push で CI と同じ検査を通した本番ビルドを添付）を展開するか、`pnpm build` の出力（`.output/chrome-mv3`）を、`chrome://extensions` の「パッケージ化されていない拡張機能を読み込む」で導入する |
 | 性能 | メニュークリック → サイドパネル表示 < 300ms、本文抽出 < 500ms（一般的な記事ページ）。初回トークンまではプロバイダ依存 |
 | プライバシー | ユーザーの明示操作なしに外部送信しない。送信先はユーザーが選んだ AI プロバイダのみ。テレメトリなし |
 | セキュリティ | → [ガードレール](./guardrails.md) |
