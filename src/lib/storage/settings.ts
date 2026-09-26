@@ -74,3 +74,14 @@ export async function setExcludedDomains(domains: readonly string[]): Promise<vo
   const value = ExcludedDomainsSchema.parse({ version: 1, domains });
   await setSyncItem(EXCLUDED_DOMAINS_KEY, value);
 }
+
+/** 設定（`settings.core`）の変更を監視する（他のページでの保存を反映するため）。解除関数を返す */
+export function watchCoreSettings(onChange: () => void): () => void {
+  const listener = (changes: Record<string, unknown>) => {
+    if (CORE_SETTINGS_KEY in changes) {
+      onChange();
+    }
+  };
+  browser.storage.sync.onChanged.addListener(listener);
+  return () => browser.storage.sync.onChanged.removeListener(listener);
+}

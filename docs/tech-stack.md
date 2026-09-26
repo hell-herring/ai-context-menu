@@ -131,7 +131,7 @@
 │   │   ├── providers/         # types.ts, anthropic.ts, openai.ts, registry.ts
 │   │   ├── prompt/            # presets.ts, build.ts, escape.ts, tokens.ts
 │   │   ├── extract/           # 注入スクリプトの本体（page.ts / selection.ts）と戻り値の検証（schema.ts）
-│   │   ├── job/               # ジョブの組み立て（create.ts）、クリックからジョブを作る判定（prepare.ts）、サイドパネルでの受信判定（receive.ts）
+│   │   ├── job/               # ジョブの組み立て（create.ts）、クリックからジョブを作る判定（prepare.ts）、サイドパネルでの受信判定（receive.ts）・送信前の判定（request.ts）・送信先の決定（target.ts）
 │   │   ├── storage/           # schema.ts, settings.ts, secrets.ts, session.ts
 │   │   ├── domain/            # 除外ドメイン判定など
 │   │   ├── safe-url.ts        # AI 出力内リンクの許可判定

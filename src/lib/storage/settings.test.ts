@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { browser } from "wxt/browser";
 import { fakeBrowser } from "wxt/testing/fake-browser";
 import {
@@ -7,6 +7,7 @@ import {
   getExcludedDomains,
   setExcludedDomains,
   updateCoreSettings,
+  watchCoreSettings,
 } from "./settings";
 import { SyncQuotaError } from "./sync-quota";
 
@@ -135,5 +136,21 @@ describe("除外ドメイン", () => {
   it.each([undefined, "broken", { domains: "example.com" }])("不正な値 %j は空", async (value) => {
     await browser.storage.sync.set({ "settings.excludedDomains": value });
     expect(await getExcludedDomains()).toEqual([]);
+  });
+});
+
+describe("watchCoreSettings", () => {
+  it("settings.core の変更だけを通知し、解除後は通知しない", async () => {
+    const onChange = vi.fn();
+    const unwatch = watchCoreSettings(onChange);
+
+    await setExcludedDomains(["example.com"]);
+    expect(onChange).not.toHaveBeenCalled();
+    await updateCoreSettings({ maxOutputTokens: 1_000 });
+    expect(onChange).toHaveBeenCalledOnce();
+
+    unwatch();
+    await updateCoreSettings({ maxOutputTokens: 2_000 });
+    expect(onChange).toHaveBeenCalledOnce();
   });
 });
