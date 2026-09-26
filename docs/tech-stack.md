@@ -95,13 +95,17 @@
 6. **ジョブ書き込み前に**、ジョブの全フィールドを対象にサイズを測る。タイトルは 300 文字、プロバイダ送信用 URL（`origin + pathname`）は 2,048 文字、表示用の元 URL は 4,096 文字を上限とし、超える場合は短縮したうえで `oversize` の理由に `metadata` を記録する（黙って短縮しない）。本文は **XML エスケープ後の文字数**を測り（[§4.6](#46-プロンプト構成)）、設定の最大入力文字数を超えていれば、エスケープ後の長さが上限に収まる位置で元テキストを先頭から上限までに切り詰めたうえで `originalLength` と `oversize: true` を付ける（`storage.session` の容量上限で書き込みが失敗するのを防ぐ。確認なしに送らないため、サイドパネルは `oversize` のジョブを必ずユーザー確認に回す）
 7. 書き込み直前に**クリック世代を確認**する（通常ジョブ・エラージョブを問わず、`job.<windowId>` へのすべての書き込みは同じ関数を通す）。background はクリック受付時（手順 1）にウィンドウごとの連番 `seq` を採番してメモリに保持し、書き込み時点でそのウィンドウの最新 `seq` と一致しない（後から別のクリックがあった）場合は破棄する。抽出の完了順が前後しても古いクリックが新しいジョブを上書きしない。ジョブにも `seq` を含め、サイドパネルは処理中/処理済みより小さい `seq` のジョブを無視する（Service Worker 再起動で連番がリセットされた場合に備え `createdAt` も比較）
 8. **手順 7〜8 は background 内の単一の直列キュー（Promise チェーン）で実行する**。複数ウィンドウのジョブが同時に完成しても、世代確認・容量確認・削除・書き込みが最新の保存状態に対して 1 件ずつ行われる。`set()` が失敗（容量超過等）した場合は `recent` を削除して 1 回だけ再試行し、それでも失敗したら小さなエラージョブを書き込む。
-   ジョブ全体を `JSON.stringify` した UTF-8 バイト数が 2 MB を超えないこと、かつ `storage.session.getBytesInUse()` − 置き換え対象の既存 `job.<windowId>` のバイト数（`getBytesInUse(key)`）＋ 新ジョブのバイト数が 8 MB（`storage.session` の全体上限 10 MB に余裕を持たせる）以下であることを確認し（全体上限を超える場合はまず `recent` の古い項目から削除し、それでも超えるなら小さなエラージョブ「他のウィンドウの未処理ジョブが多すぎます」を書き込んで中止）（本文上限 500,000 文字なら通常は収まる。超えた場合はエラージョブを書き込んで中止）、`storage.session` の `job.<windowId>` にジョブ（`id`（UUID）, `windowId`, `seq`, `pageUrl`, `frameUrl`, `hostnames`, `source`（本文・`originalLength`・`oversize` とその理由・取得元の `hostname` を含む）, `presetId`, `createdAt`）を書き込む。`hostnames` / `hostname` は送信直前の除外判定用に、**切り詰める前の** URL から求めた正規化済みホスト名（保存用に短縮した URL からはホスト名を正しく読み直せない場合があるため）
-   > M1 の実装範囲: 1 ジョブ 2 MB の検査と、`set()` 失敗時の小さなエラージョブの書き込みまで。`storage.session` 全体（8 MB）の検査と `recent` の削除は `recent`（最近の要約）と合わせて M2 で実装する。
+   ジョブ全体を `JSON.stringify` した UTF-8 バイト数が 2 MB を超えないこと、かつ `storage.session.getBytesInUse()` − 置き換え対象の既存 `job.<windowId>` のバイト数（`getBytesInUse(key)`）＋ 新ジョブのバイト数が 8 MB（`storage.session` の全体上限 10 MB に余裕を持たせる）以下であることを確認し（全体上限を超える場合はまず `recent` の古い項目から削除し、それでも超えるなら小さなエラージョブ「他のウィンドウの未処理ジョブが多すぎます」（`tooManyJobs`）を書き込んで中止。`recent` をすべて削除しても収まらない場合は `recent` を削除しない）（本文上限 500,000 文字なら通常は収まる。超えた場合はエラージョブを書き込んで中止）、`storage.session` の `job.<windowId>` にジョブ（`id`（UUID）, `windowId`, `seq`, `pageUrl`, `frameUrl`, `hostnames`, `source`（本文・`originalLength`・`oversize` とその理由・取得元の `hostname` を含む）, `presetId`, `createdAt`）を書き込む。`hostnames` / `hostname` は送信直前の除外判定用に、**切り詰める前の** URL から求めた正規化済みホスト名（保存用に短縮した URL からはホスト名を正しく読み直せない場合があるため）
 9. サイドパネルがジョブを受け取り（下記）、入力サイズ確認（`oversize` なら理由（本文 / メタデータ）とともに「先頭から上限まで送信 / キャンセル」を表示） → **送信直前に除外ドメインを再判定** → プロバイダ呼び出し → ストリーミング表示
 
 **除外判定は送信のたびに行う**: 初回送信・確認後の送信・再生成のいずれでも、プロバイダ呼び出しの直前にジョブの `hostnames` / `source.hostname`（と保存済みの各 URL）を**その時点の**除外設定で再判定する（`isExcludedJob()`）。確認待ちの間に除外ドメインが追加された場合も送信しない。
 
 **`recent` の上限**: 1 結果 1 キー（`recent.<id>`、`createdAt` 付き）で保存し、複数のサイドパネルが同時に完了しても互いに上書きしない（単一キーの読み書きによる取りこぼしを避ける）。最大 10 件、1 件あたりの結果テキストは 200 KB まで。件数超過・全体容量不足（手順 8）のときは `createdAt` の古いものから削除する（同時削除で 1 件多く消えても許容）。
+
+**`recent` の中身**（`lib/storage/recent.ts`）: サイドパネルは、生成が完了した（`done`。出力上限で途切れた・拒否を含む）結果のテキストが空でなければ保存する（拒否はテキストが空でも保存する。OpenAI の拒否は本文を出さずに完了するため）。停止・エラーの途中までの結果は保存しない。
+- `<id>` はジョブの ID。再生成して完了したら同じキーを最新の結果で置き換える（1 回のクリックにつき 1 件）。`createdAt` は保存した時刻。
+- 保存するのは結果の表示に必要な値だけ（タイトル・表示用 URL・対象種別・プロバイダ・モデル・プリセット・終了理由・結果テキスト）。**送った本文は保存しない**。
+- 結果テキストが 200 KB（UTF-8）を超える場合は先頭から収まるところまでにして `truncated` を記録し、表示時に伝える。
 
 **ジョブは 1 回だけ消費する**（二重送信・二重課金の防止）:
 - サイドパネルはウィンドウ単位（`windowId` 指定で開く）とし、起動時に `chrome.windows.getCurrent()` で自分の `windowId` を得て、`job.<自分の windowId>` だけを読む。
@@ -132,7 +136,7 @@
 │   │   ├── prompt/            # presets.ts, build.ts, escape.ts, tokens.ts
 │   │   ├── extract/           # 注入スクリプトの本体（page.ts / selection.ts）と戻り値の検証（schema.ts）
 │   │   ├── job/               # ジョブの組み立て（create.ts）、クリックからジョブを作る判定（prepare.ts）、サイドパネルでの受信判定（receive.ts）・送信前の判定（request.ts）・送信先の決定（target.ts）
-│   │   ├── storage/           # schema.ts, settings.ts, secrets.ts, session.ts
+│   │   ├── storage/           # schema.ts, settings.ts, secrets.ts, session.ts, recent.ts
 │   │   ├── domain/            # 除外ドメイン判定など
 │   │   ├── safe-url.ts        # AI 出力内リンクの許可判定
 │   │   └── i18n.ts

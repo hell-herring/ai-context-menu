@@ -161,6 +161,9 @@
   "errorTooLarge": {
     "message": "ページが大きすぎるため処理できませんでした"
   },
+  "errorTooManyJobs": {
+    "message": "他のウィンドウの未処理のジョブが多すぎるため処理できませんでした"
+  },
   "optionsTitle": {
     "message": "AI Context Menu の設定"
   },
@@ -473,5 +476,33 @@
         "content": "$1"
       }
     }
+  },
+  "recentHeading": {
+    "message": "最近の要約（$COUNT$ 件）",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "recentNote": {
+    "message": "このブラウザを閉じるまで、最大 10 件を保持します"
+  },
+  "recentClear": {
+    "message": "すべて削除"
+  },
+  "recentBack": {
+    "message": "戻る"
+  },
+  "recentSavedAt": {
+    "message": "$TIME$ に保存",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "recentTruncated": {
+    "message": "結果が長いため、先頭の一部だけを保存しています"
   }
 }

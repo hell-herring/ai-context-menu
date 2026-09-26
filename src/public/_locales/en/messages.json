@@ -161,6 +161,9 @@
   "errorTooLarge": {
     "message": "The page is too large to process"
   },
+  "errorTooManyJobs": {
+    "message": "Could not process this page because other windows have too many pending jobs"
+  },
   "optionsTitle": {
     "message": "AI Context Menu settings"
   },
@@ -473,5 +476,33 @@
         "content": "$1"
       }
     }
+  },
+  "recentHeading": {
+    "message": "Recent summaries ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "recentNote": {
+    "message": "Up to 10 are kept until you close this browser"
+  },
+  "recentClear": {
+    "message": "Delete all"
+  },
+  "recentBack": {
+    "message": "Back"
+  },
+  "recentSavedAt": {
+    "message": "Saved at $TIME$",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "recentTruncated": {
+    "message": "Only the beginning was kept because the result is long"
   }
 }

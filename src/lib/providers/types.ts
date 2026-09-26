@@ -13,7 +13,9 @@ export interface SummarizeRequest {
   signal: AbortSignal;
 }
 
-export type StopReason = "end" | "max_tokens" | "refusal";
+export const STOP_REASONS = ["end", "max_tokens", "refusal"] as const;
+
+export type StopReason = (typeof STOP_REASONS)[number];
 
 export interface Usage {
   inputTokens: number;
