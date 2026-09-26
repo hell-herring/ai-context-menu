@@ -4,14 +4,16 @@ import { isExcludedPage, isExcludedUrl } from "../../lib/domain/exclude";
 import { JobReceiver } from "../../lib/job/receive";
 import { buildPrompt, describeOutputLanguage } from "../../lib/prompt/build";
 import { PROVIDERS } from "../../lib/providers/registry";
+import { resolveProvider } from "../../lib/providers/select";
 import {
   ProviderError,
   type ProviderErrorKind,
+  type ProviderId,
   type StopReason,
   type Usage,
 } from "../../lib/providers/types";
 import type { ContentJob, Job, JobErrorCode } from "../../lib/storage/schema";
-import { getApiKey } from "../../lib/storage/secrets";
+import { getApiKeys } from "../../lib/storage/secrets";
 import { readJob, removeJob, watchJob } from "../../lib/storage/session";
 import { getCoreSettings, getExcludedDomains } from "../../lib/storage/settings";
 
@@ -26,7 +28,14 @@ export type Phase =
 export type PanelState =
   | { kind: "idle" }
   | { kind: "jobError"; error: JobErrorCode }
-  | { kind: "summary"; job: ContentJob; model: string | undefined; phase: Phase; text: string };
+  | {
+      kind: "summary";
+      job: ContentJob;
+      /** 送信先（API キー・設定を読んだ後に決まる） */
+      target: { provider: ProviderId; model: string } | undefined;
+      phase: Phase;
+      text: string;
+    };
 
 /**
  * サイドパネルのジョブ受信と AI 呼び出し。
@@ -65,7 +74,7 @@ export function useSummary() {
         );
       };
 
-      setState({ kind: "summary", job, model: undefined, phase: { kind: "streaming" }, text: "" });
+      setState({ kind: "summary", job, target: undefined, phase: { kind: "streaming" }, text: "" });
 
       // 受信したテキストは描画フレームごとにまとめて反映する
       let text = "";
@@ -76,8 +85,8 @@ export function useSummary() {
       };
 
       try {
-        const [apiKey, settings, excludedDomains] = await Promise.all([
-          getApiKey("anthropic"),
+        const [apiKeys, settings, excludedDomains] = await Promise.all([
+          getApiKeys(),
           getCoreSettings(),
           getExcludedDomains(),
         ]);
@@ -90,12 +99,17 @@ export function useSummary() {
           update({ phase: { kind: "error", error: "excludedDomain" } });
           return;
         }
-        if (!apiKey) {
+        const provider = resolveProvider(settings.defaultProvider, {
+          anthropic: apiKeys.anthropic !== undefined,
+          openai: apiKeys.openai !== undefined,
+        });
+        const apiKey = provider && apiKeys[provider];
+        if (!provider || !apiKey) {
           update({ phase: { kind: "error", error: "apiKeyMissing" } });
           return;
         }
-        const model = settings.models.anthropic;
-        update({ model });
+        const model = settings.models[provider];
+        update({ target: { provider, model } });
 
         const prompt = buildPrompt({
           presetId: job.presetId,
@@ -111,7 +125,7 @@ export function useSummary() {
           },
         });
 
-        const events = PROVIDERS.anthropic.stream(apiKey, {
+        const events = PROVIDERS[provider].stream(apiKey, {
           ...prompt,
           model,
           maxOutputTokens: settings.maxOutputTokens,
@@ -152,7 +166,7 @@ export function useSummary() {
         setState({ kind: "jobError", error: job.error });
       } else if (job.source.oversize) {
         // 上限超過・メタデータ短縮は黙って送らず、必ずユーザーに確認する
-        setState({ kind: "summary", job, model: undefined, phase: { kind: "confirm" }, text: "" });
+        setState({ kind: "summary", job, target: undefined, phase: { kind: "confirm" }, text: "" });
       } else {
         void send(job);
       }

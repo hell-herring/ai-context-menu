@@ -164,8 +164,20 @@
   "optionsTitle": {
     "message": "AI Context Menu settings"
   },
+  "optionsProviderHeading": {
+    "message": "AI provider"
+  },
+  "optionsProviderLabel": {
+    "message": "Provider used for summaries"
+  },
+  "optionsProviderNone": {
+    "message": "Register an API key to choose the provider used for summaries."
+  },
   "optionsAnthropicHeading": {
     "message": "Anthropic (Claude)"
+  },
+  "optionsOpenaiHeading": {
+    "message": "OpenAI (ChatGPT)"
   },
   "optionsApiKeyLabel": {
     "message": "API key"
@@ -200,10 +212,15 @@
     "message": "Failed to save"
   },
   "optionsStorageNote": {
-    "message": "The API key is stored unencrypted in this browser (chrome.storage.local) and is sent only to the Anthropic API. We recommend using a key with a spending limit."
+    "message": "The API key is stored unencrypted in this browser (chrome.storage.local) and is sent only to the $PROVIDER$ API. We recommend using a key with a spending limit.",
+    "placeholders": {
+      "provider": {
+        "content": "$1"
+      }
+    }
   },
   "optionsDataNote": {
-    "message": "When you summarize, the page title, URL (without query or fragment) and content are sent to Anthropic. Data is sent only when you click a menu item or a button such as Regenerate."
+    "message": "When you summarize, the page title, URL (without query or fragment) and content are sent to the AI provider you selected (Anthropic or OpenAI). Data is sent only when you click a menu item or a button such as Regenerate."
   },
   "optionsLoadFailed": {
     "message": "Failed to load the settings"

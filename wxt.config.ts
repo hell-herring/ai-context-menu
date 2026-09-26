@@ -17,8 +17,8 @@ export default defineConfig({
     description: "__MSG_extDescription__",
     default_locale: "ja",
     minimum_chrome_version: "116",
-    // M1 までに必要な権限のみ。OpenAI の host_permissions は M2 で docs/tech-stack.md §2 の一覧から追加する。
+    // docs/tech-stack.md §2 の一覧のうち、現在使うものだけ（M2: OpenAI を追加）
     permissions: ["contextMenus", "sidePanel", "activeTab", "scripting", "storage"],
-    host_permissions: ["https://api.anthropic.com/*"],
+    host_permissions: ["https://api.anthropic.com/*", "https://api.openai.com/*"],
   },
 });

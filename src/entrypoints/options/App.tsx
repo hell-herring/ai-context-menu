@@ -1,56 +1,54 @@
-import { type FormEvent, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { type MessageKey, t } from "../../lib/i18n";
-import {
-  getApiKey,
-  maskApiKey,
-  normalizeApiKey,
-  removeApiKey,
-  setApiKey,
-} from "../../lib/storage/secrets";
+import { PROVIDERS } from "../../lib/providers/registry";
+import { defaultProviderAfterSave, resolveProvider } from "../../lib/providers/select";
+import { PROVIDER_IDS, type ProviderId } from "../../lib/providers/types";
+import { getApiKeys, maskApiKey } from "../../lib/storage/secrets";
+import { getCoreSettings, updateCoreSettings } from "../../lib/storage/settings";
+import { ApiKeySection } from "./ApiKeySection";
 import { ExcludedDomainsSection } from "./ExcludedDomainsSection";
 
-// 設定画面: Anthropic の API キーの保存・削除と除外ドメイン。接続テスト・モデル選択などは M2 で追加する
+// 設定画面: API キー（プロバイダごと）・使用する AI・除外ドメイン。
+// 接続テスト・モデル選択・出力言語・上限などは設定画面の PR で追加する。
 
-type Notice = { key: MessageKey; error: boolean };
+type StoredKeys = Record<ProviderId, string | undefined>;
 
 export function App() {
-  const inputId = useId();
-  const [stored, setStored] = useState<string | undefined>(undefined);
-  const [input, setInput] = useState("");
-  const [notice, setNotice] = useState<Notice | undefined>(undefined);
+  const [keys, setKeys] = useState<StoredKeys | undefined>(undefined);
+  const [preferred, setPreferred] = useState<ProviderId | undefined>(undefined);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
-    getApiKey("anthropic")
-      .then((key) => setStored(key === undefined ? undefined : maskApiKey(key)))
-      .catch(() => setNotice({ key: "optionsLoadFailed", error: true }));
+    Promise.all([getApiKeys(), getCoreSettings()])
+      .then(([apiKeys, settings]) => {
+        setKeys({
+          anthropic: apiKeys.anthropic && maskApiKey(apiKeys.anthropic),
+          openai: apiKeys.openai && maskApiKey(apiKeys.openai),
+        });
+        setPreferred(settings.defaultProvider);
+      })
+      .catch(() => setLoadError(true));
   }, []);
 
-  const save = async (event: FormEvent) => {
-    event.preventDefault();
-    const apiKey = normalizeApiKey(input);
-    if (apiKey === undefined) {
-      setNotice({ key: "optionsInvalidKey", error: true });
-      return;
-    }
-    try {
-      await setApiKey("anthropic", apiKey);
-      setStored(maskApiKey(apiKey));
-      setInput("");
-      setNotice({ key: "optionsSaved", error: false });
-    } catch {
-      setNotice({ key: "optionsSaveFailed", error: true });
-    }
-  };
-
-  const remove = async () => {
-    try {
-      await removeApiKey("anthropic");
-      setStored(undefined);
-      setNotice({ key: "optionsDeleted", error: false });
-    } catch {
-      setNotice({ key: "optionsSaveFailed", error: true });
-    }
-  };
+  const onKeyChange = useCallback(
+    async (provider: ProviderId, masked: string | undefined) => {
+      if (!keys) {
+        return;
+      }
+      const next = { ...keys, [provider]: masked };
+      setKeys(next);
+      if (masked === undefined) {
+        return;
+      }
+      // 最初にキーを登録したプロバイダを既定にする（docs/spec.md §3.6）
+      const changed = defaultProviderAfterSave(preferred, provider, registered(next));
+      if (changed !== undefined) {
+        await updateCoreSettings({ defaultProvider: changed });
+        setPreferred(changed);
+      }
+    },
+    [keys, preferred],
+  );
 
   return (
     <main className="mx-auto flex max-w-xl flex-col gap-6 p-6">
@@ -58,54 +56,106 @@ export function App() {
 
       <p className="text-neutral-700 text-sm dark:text-neutral-300">{t("optionsDataNote")}</p>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="font-semibold text-base">{t("optionsAnthropicHeading")}</h2>
-        <p className="text-neutral-600 text-sm dark:text-neutral-400">
-          {stored ? t("optionsKeyStored", stored) : t("optionsKeyNotStored")}
+      {loadError && (
+        <p role="alert" className="text-red-700 text-sm dark:text-red-400">
+          {t("optionsLoadFailed")}
         </p>
-        <form className="flex flex-col gap-2" onSubmit={(event) => void save(event)}>
-          <label htmlFor={inputId} className="font-medium text-sm">
-            {t("optionsApiKeyLabel")}
-          </label>
-          <input
-            id={inputId}
-            type="password"
-            autoComplete="off"
-            spellCheck={false}
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            placeholder="sk-ant-..."
-            className="rounded-md border border-neutral-300 bg-transparent px-3 py-1.5 font-mono text-sm dark:border-neutral-600"
+      )}
+
+      {keys && (
+        <>
+          <ProviderSection
+            keys={keys}
+            preferred={preferred}
+            onSelect={async (provider) => {
+              await updateCoreSettings({ defaultProvider: provider });
+              setPreferred(provider);
+            }}
           />
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm text-white hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
-            >
-              {t("optionsSave")}
-            </button>
-            {stored && (
-              <button
-                type="button"
-                onClick={() => void remove()}
-                className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-600 dark:hover:bg-neutral-800"
-              >
-                {t("optionsDelete")}
-              </button>
-            )}
-          </div>
-        </form>
-        <p className="text-neutral-600 text-xs dark:text-neutral-400">{t("optionsStorageNote")}</p>
-        <p
-          role="status"
-          aria-live="polite"
-          className={`text-sm ${notice?.error ? "text-red-700 dark:text-red-400" : "text-green-700 dark:text-green-400"}`}
-        >
-          {notice && t(notice.key)}
-        </p>
-      </section>
+          {PROVIDER_IDS.map((provider) => (
+            <ApiKeySection
+              key={provider}
+              provider={provider}
+              stored={keys[provider]}
+              onChange={(masked) => onKeyChange(provider, masked)}
+            />
+          ))}
+        </>
+      )}
 
       <ExcludedDomainsSection />
     </main>
+  );
+}
+
+function registered(keys: StoredKeys): Record<ProviderId, boolean> {
+  return { anthropic: keys.anthropic !== undefined, openai: keys.openai !== undefined };
+}
+
+/** 使用する AI（キーを登録したプロバイダから選ぶ） */
+function ProviderSection({
+  keys,
+  preferred,
+  onSelect,
+}: {
+  keys: StoredKeys;
+  preferred: ProviderId | undefined;
+  onSelect: (provider: ProviderId) => Promise<void>;
+}) {
+  const headingId = useId();
+  const selectId = useId();
+  const [notice, setNotice] = useState<{ key: MessageKey; error: boolean } | undefined>(undefined);
+  const available = PROVIDER_IDS.filter((provider) => keys[provider] !== undefined);
+  const current = resolveProvider(preferred, registered(keys));
+
+  const select = async (provider: ProviderId) => {
+    try {
+      await onSelect(provider);
+      setNotice({ key: "optionsSaved", error: false });
+    } catch {
+      setNotice({ key: "optionsSaveFailed", error: true });
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-3" aria-labelledby={headingId}>
+      <h2 id={headingId} className="font-semibold text-base">
+        {t("optionsProviderHeading")}
+      </h2>
+      {current === undefined ? (
+        <p className="text-neutral-600 text-sm dark:text-neutral-400">{t("optionsProviderNone")}</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <label htmlFor={selectId} className="font-medium text-sm">
+            {t("optionsProviderLabel")}
+          </label>
+          <select
+            id={selectId}
+            value={current}
+            disabled={available.length < 2}
+            onChange={(event) => {
+              const provider = PROVIDER_IDS.find((id) => id === event.target.value);
+              if (provider) {
+                void select(provider);
+              }
+            }}
+            className="rounded-md border border-neutral-300 bg-transparent px-3 py-1.5 text-sm dark:border-neutral-600"
+          >
+            {available.map((provider) => (
+              <option key={provider} value={provider}>
+                {PROVIDERS[provider].displayName}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      <p
+        role="status"
+        aria-live="polite"
+        className={`text-sm ${notice?.error ? "text-red-700 dark:text-red-400" : "text-green-700 dark:text-green-400"}`}
+      >
+        {notice && t(notice.key)}
+      </p>
+    </section>
   );
 }

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { MAX_EXCLUDED_DOMAINS } from "../domain/exclude";
 import { PRESET_IDS } from "../prompt/presets";
+import { DEFAULT_MODELS } from "../providers/defaults";
+import { PROVIDER_IDS } from "../providers/types";
 
 // ストレージに置く値のスキーマ。読み出した値は必ずここで検証してから使う（docs/guardrails.md §5）
 
@@ -12,11 +14,17 @@ export const OUTPUT_LANGUAGES = ["browser", "ja", "en", "source"] as const;
 
 export type OutputLanguage = (typeof OUTPUT_LANGUAGES)[number];
 
+const ModelIdSchema = z.string().trim().min(1).max(200);
+
 export const CoreSettingsSchema = z.object({
   version: z.literal(1),
   models: z.object({
-    anthropic: z.string().trim().min(1).max(200),
+    anthropic: ModelIdSchema,
+    // M2 で追加した項目。M1 で保存された値にはないため既定値で補う
+    openai: ModelIdSchema.default(DEFAULT_MODELS.openai),
   }),
+  /** 使用するプロバイダ。未設定・キーが未登録なら、キーのあるプロバイダを使う（lib/providers/select.ts） */
+  defaultProvider: z.enum(PROVIDER_IDS).optional(),
   outputLanguage: z.enum(OUTPUT_LANGUAGES),
   /** 送信する本文の上限（XML エスケープ後の文字数） */
   maxInputChars: z.int().min(1_000).max(500_000),

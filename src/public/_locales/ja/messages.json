@@ -164,8 +164,20 @@
   "optionsTitle": {
     "message": "AI Context Menu の設定"
   },
+  "optionsProviderHeading": {
+    "message": "使用する AI"
+  },
+  "optionsProviderLabel": {
+    "message": "要約に使うプロバイダ"
+  },
+  "optionsProviderNone": {
+    "message": "API キーを登録すると、要約に使うプロバイダを選べます。"
+  },
   "optionsAnthropicHeading": {
     "message": "Anthropic（Claude）"
+  },
+  "optionsOpenaiHeading": {
+    "message": "OpenAI（ChatGPT）"
   },
   "optionsApiKeyLabel": {
     "message": "API キー"
@@ -200,10 +212,15 @@
     "message": "保存に失敗しました"
   },
   "optionsStorageNote": {
-    "message": "API キーはこのブラウザ内（chrome.storage.local）に暗号化されずに保存され、Anthropic の API にのみ送信されます。利用上限を設定したキーの使用をおすすめします。"
+    "message": "API キーはこのブラウザ内（chrome.storage.local）に暗号化されずに保存され、$PROVIDER$ の API にのみ送信されます。利用上限を設定したキーの使用をおすすめします。",
+    "placeholders": {
+      "provider": {
+        "content": "$1"
+      }
+    }
   },
   "optionsDataNote": {
-    "message": "要約を実行すると、ページのタイトル・URL（クエリやフラグメントを除く）・本文が Anthropic に送信されます。送信はメニューのクリックや再生成ボタンなどの操作時のみ行われます。"
+    "message": "要約を実行すると、ページのタイトル・URL（クエリやフラグメントを除く）・本文が、選択した AI プロバイダ（Anthropic または OpenAI）に送信されます。送信はメニューのクリックや再生成ボタンなどの操作時のみ行われます。"
   },
   "optionsLoadFailed": {
     "message": "設定を読み込めませんでした"

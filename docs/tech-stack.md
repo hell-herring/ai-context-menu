@@ -1,6 +1,6 @@
 # 技術選定とアーキテクチャ
 
-> ステータス: **Draft v0.1**（M1 最小縦串まで実装済み）
+> ステータス: **Draft v0.1**（M2 実装中）
 > 関連: [機能仕様](./spec.md) / [ガードレール](./guardrails.md) / [AGENTS.md](../AGENTS.md)
 
 ## 1. 技術スタック一覧
@@ -188,8 +188,11 @@ export interface Provider {
 - 実装時はパラメータ名・ヘッダを公式 SDK ドキュメントで確認すること（推測で書かない）。
 
 **OpenAI**
-- `new OpenAI({ apiKey, dangerouslyAllowBrowser: true })`、ストリーミング API を使用。
-- 既定モデルは実装時点の公式ドキュメントで決定し、定数 1 箇所で管理する。
+- `new OpenAI({ apiKey, dangerouslyAllowBrowser: true, baseURL: "https://api.openai.com/v1", organization: null, project: null, logLevel: "off" })` — `baseURL`・組織・プロジェクトは環境変数等に左右されないよう固定する。
+- Responses API（`client.responses.create({ ..., stream: true }, { signal })`）でストリーミングする。system プロンプトは `instructions`、本文は `input`、上限は `max_output_tokens`（推論トークンを含む）。`response.output_text.delta` を UI へ流し、`response.completed` / `response.incomplete` の `usage` と `incomplete_details.reason`（`max_output_tokens` → 出力上限、`content_filter` → 拒否）で終了状態を得る。`response.refusal.delta` を受けたら拒否として終える。`response.failed` はエラーコードで共通エラーに変換する。
+- **`store: false` を必ず付ける**（Responses API は既定でレスポンスを OpenAI 側に 30 日以上保存するため）。
+- 既定モデル `gpt-6-sol`（D-3。`src/lib/providers/defaults.ts` で管理）。要約用途のため `reasoning.effort` は `low`（許可リスト `gpt-6-sol` / `gpt-6-luna` のみ付与）。
+- モデル一覧（`client.models.list()`）はテキスト生成に使えるモデルの許可パターンで絞る（埋め込み・画像・音声・リアルタイム・検索・モデレーション・コーディング専用・pro 等を除外。`isTextGenerationModel()`）。
 
 **Gemini（Phase 2）**
 - Google 公式 SDK（実装時点で推奨されているもの。現時点の想定は `@google/genai`）を使い、`Provider` アダプタを 1 つ追加するだけで UI 側の変更が不要な設計を保つ。

@@ -1,6 +1,9 @@
 // プロバイダ抽象（docs/tech-stack.md §4.4）。UI はこのインターフェイスのみに依存し、SDK の型を UI 層へ漏らさない
 
-export type ProviderId = "anthropic"; // M2 で "openai"、Phase 2 で "gemini" を追加予定
+/** 対応プロバイダ（Phase 2 で "gemini" を追加予定）。並び順は既定プロバイダを決めるときの優先順 */
+export const PROVIDER_IDS = ["anthropic", "openai"] as const;
+
+export type ProviderId = (typeof PROVIDER_IDS)[number];
 
 export interface SummarizeRequest {
   system: string;

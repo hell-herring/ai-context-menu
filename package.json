@@ -24,6 +24,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "0.128.0",
     "@mozilla/readability": "0.6.0",
+    "openai": "7.23.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-markdown": "10.1.0",

@@ -6,6 +6,7 @@ import {
   getCoreSettings,
   getExcludedDomains,
   setExcludedDomains,
+  updateCoreSettings,
 } from "./settings";
 import { SyncQuotaError } from "./sync-quota";
 
@@ -24,7 +25,23 @@ describe("getCoreSettings", () => {
     expect(await getCoreSettings()).toEqual(settings);
   });
 
+  it("M1 で保存された値（OpenAI のモデルなし）は既定のモデルで補う", async () => {
+    const m1 = {
+      version: 1,
+      models: { anthropic: "claude-sonnet-5" },
+      outputLanguage: "ja",
+      maxInputChars: 10_000,
+      maxOutputTokens: 4_000,
+    };
+    await browser.storage.sync.set({ "settings.core": m1 });
+    expect(await getCoreSettings()).toEqual({
+      ...m1,
+      models: { anthropic: "claude-sonnet-5", openai: DEFAULT_SETTINGS.models.openai },
+    });
+  });
+
   it.each([
+    { ...DEFAULT_SETTINGS, defaultProvider: "gemini" },
     { ...DEFAULT_SETTINGS, maxOutputTokens: 100_000 },
     { ...DEFAULT_SETTINGS, maxInputChars: 999 },
     { ...DEFAULT_SETTINGS, version: 2 },
@@ -32,6 +49,24 @@ describe("getCoreSettings", () => {
   ])("範囲外・不正な値 %j は既定値にする", async (value) => {
     await browser.storage.sync.set({ "settings.core": value });
     expect(await getCoreSettings()).toEqual(DEFAULT_SETTINGS);
+  });
+});
+
+describe("updateCoreSettings", () => {
+  it("一部の項目だけを更新して保存する", async () => {
+    await updateCoreSettings({ defaultProvider: "openai" });
+    expect(await getCoreSettings()).toEqual({ ...DEFAULT_SETTINGS, defaultProvider: "openai" });
+    await updateCoreSettings({ maxInputChars: 10_000 });
+    expect(await getCoreSettings()).toEqual({
+      ...DEFAULT_SETTINGS,
+      defaultProvider: "openai",
+      maxInputChars: 10_000,
+    });
+  });
+
+  it("不正な値は保存しない", async () => {
+    await expect(updateCoreSettings({ maxInputChars: 1 })).rejects.toThrow();
+    expect(await browser.storage.sync.get(null)).toEqual({});
   });
 });
 

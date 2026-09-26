@@ -1,6 +1,7 @@
 import { browser } from "wxt/browser";
 import { z } from "zod";
 import { normalizeDomainPattern } from "../domain/exclude";
+import { DEFAULT_MODELS } from "../providers/defaults";
 import { type CoreSettings, CoreSettingsSchema, ExcludedDomainsSchema } from "./schema";
 import { setSyncItem } from "./sync-quota";
 
@@ -8,25 +9,27 @@ const CORE_SETTINGS_KEY = "settings.core";
 
 const EXCLUDED_DOMAINS_KEY = "settings.excludedDomains";
 
-/** Anthropic の既定モデル（docs/tech-stack.md §4.5） */
-export const DEFAULT_ANTHROPIC_MODEL = "claude-opus-5";
-
 export const DEFAULT_SETTINGS: CoreSettings = {
   version: 1,
-  models: { anthropic: DEFAULT_ANTHROPIC_MODEL },
+  models: { ...DEFAULT_MODELS },
   outputLanguage: "browser",
   maxInputChars: 50_000,
   maxOutputTokens: 8_000,
 };
 
-/**
- * 設定を読む。未保存・不正な値の場合は既定値を返す。
- * 設定画面（書き込み）は M2 で実装する。
- */
+/** 設定を読む。未保存・不正な値の場合は既定値を返す */
 export async function getCoreSettings(): Promise<CoreSettings> {
   const stored = await browser.storage.sync.get(CORE_SETTINGS_KEY);
   const parsed = CoreSettingsSchema.safeParse(stored[CORE_SETTINGS_KEY]);
   return parsed.success ? parsed.data : DEFAULT_SETTINGS;
+}
+
+/** 設定の一部を更新する。検証してから保存する（容量超過は SyncQuotaError） */
+export async function updateCoreSettings(
+  patch: Partial<Omit<CoreSettings, "version">>,
+): Promise<void> {
+  const value = CoreSettingsSchema.parse({ ...(await getCoreSettings()), ...patch });
+  await setSyncItem(CORE_SETTINGS_KEY, value);
 }
 
 /** 読み出し時は壊れた値でも解釈できる項目を残す（除外が黙って無効になるのを避ける） */

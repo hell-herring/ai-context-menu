@@ -48,13 +48,13 @@ export function App() {
 }
 
 function Header({ state }: { state: PanelState }) {
-  const model = state.kind === "summary" ? state.model : undefined;
+  const target = state.kind === "summary" ? state.target : undefined;
   return (
     <header className="flex items-baseline justify-between gap-2">
       <h1 className="font-semibold text-base">{t("extName")}</h1>
-      {model && (
+      {target && (
         <span className="truncate text-neutral-600 text-xs dark:text-neutral-400">
-          {PROVIDERS.anthropic.displayName} · {model}
+          {PROVIDERS[target.provider].displayName} · {target.model}
         </span>
       )}
     </header>
