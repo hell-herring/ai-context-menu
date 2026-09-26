@@ -76,6 +76,10 @@ deps_hash() {
   cat "$ROOT_DIR/package.json" "$ROOT_DIR/pnpm-lock.yaml" "$ROOT_DIR/pnpm-workspace.yaml" | sha256sum | cut -d " " -f 1
 }
 
+deps_current() {
+  [[ -f "$DEPS_STAMP" && "$(cat "$DEPS_STAMP")" == "$(deps_hash)" && -d "$ROOT_DIR/.wxt" ]] && deps_installed
+}
+
 node_major_of() { "$1" -p 'process.versions.node.split(".")[0]' 2>/dev/null || true; }
 
 # 展開済みの Node.js（最も新しいもの）の bin ディレクトリ。なければ空
@@ -267,7 +271,7 @@ check() {
   fi
   # オフライン（Codex のエージェント実行中など）でも検査できるよう、pnpm には問い合わせず、
   # このスクリプトで入れたときの package.json / pnpm-lock.yaml / pnpm-workspace.yaml と比べる
-  if [[ -f "$DEPS_STAMP" && "$(cat "$DEPS_STAMP")" == "$(deps_hash)" && -d "$ROOT_DIR/.wxt" ]] && deps_installed; then
+  if deps_current; then
     log "OK   依存（pnpm-lock.yaml と一致）"
   else
     log "NG   依存が未導入・欠けている、または package.json / pnpm-lock.yaml の変更後に入れ直していません（bash scripts/setup-dev-env.sh）"
@@ -313,9 +317,13 @@ if [[ "$MODE" == "setup" ]]; then
     log "pnpm@$PNPM_VERSION を入れます"
     npm install --global --no-fund --no-audit --no-update-notifier "pnpm@$PNPM_VERSION" >&2
   fi
-  log "依存を入れます（pnpm install --frozen-lockfile）"
-  (cd "$ROOT_DIR" && pnpm install --frozen-lockfile >&2)
-  deps_hash >"$DEPS_STAMP"
+  if deps_current; then
+    log "依存は導入済みです（pnpm install を省略）"
+  else
+    log "依存を入れます（pnpm install --frozen-lockfile）"
+    (cd "$ROOT_DIR" && pnpm install --frozen-lockfile >&2)
+    deps_hash >"$DEPS_STAMP"
+  fi
   install_chromium
 fi
 
