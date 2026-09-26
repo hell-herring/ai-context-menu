@@ -84,13 +84,11 @@ export function useSummary() {
       };
 
       try {
-        const [apiKeys, settings, excludedDomains] = await Promise.all([
-          getApiKeys(),
-          getCoreSettings(),
-          getExcludedDomains(),
-        ]);
+        const [apiKeys, settings] = await Promise.all([getApiKeys(), getCoreSettings()]);
         // 確認待ち・再生成の間に除外ドメインが追加された場合も送らない。
-        // プロバイダ呼び出しの直前に、その時点の設定で毎回判定する（docs/guardrails.md §2）
+        // プロバイダ呼び出しの直前に、その時点の設定で毎回判定する（docs/guardrails.md §2）。
+        // 他の読み込みより後に読み、判定からプロバイダ呼び出しまでの間に await を挟まない
+        const excludedDomains = await getExcludedDomains();
         if (isExcludedJob(job, excludedDomains)) {
           update({ phase: { kind: "error", error: "excludedDomain" } });
           return;

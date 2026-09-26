@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { type MessageKey, t } from "../../lib/i18n";
 import { PROVIDERS } from "../../lib/providers/registry";
 import { defaultProviderAfterSave, resolveProvider } from "../../lib/providers/select";
@@ -17,39 +17,49 @@ export function App() {
   const [keys, setKeys] = useState<StoredKeys | undefined>(undefined);
   const [preferred, setPreferred] = useState<ProviderId | undefined>(undefined);
   const [loadError, setLoadError] = useState(false);
+  /** キーの登録状況（保存・削除の処理順に更新する。描画時点の値ではなくこちらで既定プロバイダを判定する） */
+  const registeredRef = useRef<Record<ProviderId, boolean> | undefined>(undefined);
+  /** キーの保存・削除の後処理を 1 件ずつ行うキュー（複数のフォームを続けて保存しても判定が競合しない） */
+  const queueRef = useRef<Promise<unknown>>(Promise.resolve());
 
   useEffect(() => {
     Promise.all([getApiKeys(), getCoreSettings()])
       .then(([apiKeys, settings]) => {
-        setKeys({
+        const stored: StoredKeys = {
           anthropic: apiKeys.anthropic && maskApiKey(apiKeys.anthropic),
           openai: apiKeys.openai && maskApiKey(apiKeys.openai),
-        });
+        };
+        registeredRef.current = registered(stored);
+        setKeys(stored);
         setPreferred(settings.defaultProvider);
       })
       .catch(() => setLoadError(true));
   }, []);
 
-  const onKeyChange = useCallback(
-    async (provider: ProviderId, masked: string | undefined) => {
-      if (!keys) {
+  const onKeyChange = useCallback((provider: ProviderId, masked: string | undefined) => {
+    const task = queueRef.current.then(async () => {
+      const before = registeredRef.current;
+      if (!before) {
         return;
       }
-      const next = { ...keys, [provider]: masked };
-      setKeys(next);
+      registeredRef.current = { ...before, [provider]: masked !== undefined };
+      setKeys((current) => current && { ...current, [provider]: masked });
       if (masked === undefined) {
         return;
       }
       // 最初にキーを登録したプロバイダを既定にする（docs/spec.md §3.6）。
-      // 保存前に使われていたプロバイダは維持するため、保存前のキーで判定する
-      const changed = defaultProviderAfterSave(preferred, provider, registered(keys));
+      // 保存前に使われていたプロバイダは維持するため、保存前のキーと最新の設定で判定する
+      const { defaultProvider } = await getCoreSettings();
+      const changed = defaultProviderAfterSave(defaultProvider, provider, before);
       if (changed !== undefined) {
         await updateCoreSettings({ defaultProvider: changed });
         setPreferred(changed);
       }
-    },
-    [keys, preferred],
-  );
+    });
+    // 1 件の失敗で後続の処理が止まらないようにする（失敗は呼び出し元のフォームで表示する）
+    queueRef.current = task.catch(() => {});
+    return task;
+  }, []);
 
   return (
     <main className="mx-auto flex max-w-xl flex-col gap-6 p-6">
