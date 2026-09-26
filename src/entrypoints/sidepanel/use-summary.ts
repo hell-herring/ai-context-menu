@@ -53,7 +53,10 @@ export type PanelState =
       job: ContentJob;
       /** 送信した（送信中の）送信先とプリセット。送信直前の判定を通った後に決まる */
       sent: (Target & { presetId: PresetId }) | undefined;
-      /** サイドパネルで選んだ送信先（未選択なら設定の既定）。このジョブだけに効かせる */
+      /**
+       * このジョブの送信先。受け取った時点の設定の既定で決め、サイドパネルで切り替えられる（このジョブだけに
+       * 効かせる）。設定を読めずに決められなかった場合だけ undefined（送信時の設定の既定を使う）
+       */
       choice: Target | undefined;
       /** 使うプリセット（受け取った時点ではメニューで選んだもの） */
       presetId: PresetId;
@@ -219,7 +222,12 @@ export function useSummary() {
           update({ phase: { kind: "error", error: "context_length" } });
           return;
         }
-        update({ sent: { provider, model, presetId }, fittedChars: plan.fittedChars });
+        // 受信時に送信先を決められなかった場合も、送った送信先をこのジョブの間は固定する
+        update({
+          choice: target,
+          sent: { provider, model, presetId },
+          fittedChars: plan.fittedChars,
+        });
 
         const events = PROVIDERS[provider].stream(apiKey, {
           ...plan.prompt,
@@ -294,13 +302,17 @@ export function useSummary() {
       if (env) {
         setEnv(env);
       }
+      // 送信先は受け取った時点の設定の既定で決め、このジョブの間は固定する（後から設定やキーが
+      // 変わっても、確認・再生成で他のプロバイダに黙って送らない）
+      const choice = env && resolveTarget(env.settings, env.keys, undefined);
       // 設定を読めなければ確認する側に倒す
       const mode = settings?.confirmBeforeSend ?? "always";
-      const check = env ? modelCheck(job, job.presetId, undefined, env, undefined) : undefined;
+      const check = env ? modelCheck(job, job.presetId, choice, env, undefined) : undefined;
       if (check?.kind === "tooLong") {
         // どう切り詰めても送れないため、確認を出さずにエラーにする
         setState({
           ...summary,
+          choice,
           phase: { kind: "error", error: "context_length" },
           fitApproval: undefined,
           fittedChars: undefined,
@@ -312,12 +324,13 @@ export function useSummary() {
       if (needsConfirmation(job, mode) || overflow) {
         setState({
           ...summary,
+          choice,
           phase: { kind: "confirm", overflow },
           fitApproval: undefined,
           fittedChars: undefined,
         });
       } else {
-        void send(job, job.presetId, undefined, undefined);
+        void send(job, job.presetId, choice, undefined);
       }
     },
     [cancelRun, send],
