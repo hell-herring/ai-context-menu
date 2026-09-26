@@ -57,8 +57,8 @@ case "$(uname -s)-$(uname -m)" in
 esac
 
 # 入れた依存が消えていないか（pnpm の仮想ストアと、package.json の直接の依存、推移的な依存がすべてあるか）。
-# 推移的な依存は、仮想ストア（node_modules/.pnpm/<パッケージ>/node_modules/）の各パッケージとその依存へのリンクが
-# 実在する package.json を指すかで確かめる（依存が消えるとリンク切れになる）。
+# 推移的な依存は、直接の依存から仮想ストア（node_modules/.pnpm/<パッケージ>/node_modules/）のリンクをたどり、
+# どれも実在する package.json を指すかで確かめる（依存が消えるとリンク切れになる。どこからも参照されない項目は見ない）。
 # オフラインで確かめられる範囲にとどめる（各パッケージの中身までは検査しない）
 deps_installed() {
   [[ -f "$ROOT_DIR/node_modules/.pnpm/lock.yaml" ]] || return 1
@@ -72,19 +72,25 @@ deps_installed() {
       console.error("見つからない依存: " + missing.join(" "));
       process.exit(1);
     }
-    const store = "node_modules/.pnpm";
-    const dirs = [path.join(store, "node_modules")];
-    for (const entry of fs.readdirSync(store, { withFileTypes: true })) {
-      if (entry.isDirectory() && entry.name !== "node_modules") dirs.push(path.join(store, entry.name, "node_modules"));
-    }
+    // 直接の依存から仮想ストアのリンクをたどる（前の版の残りなど、どこからも参照されない項目は検査しない）。
+    // 実体は node_modules/.pnpm/<項目>/node_modules/<名前> にあり、同じ node_modules に並ぶものがその依存
     const children = (dir) =>
-      (fs.existsSync(dir) ? fs.readdirSync(dir) : [])
+      fs
+        .readdirSync(dir)
         .filter((name) => !name.startsWith("."))
         .flatMap((name) => (name.startsWith("@") ? children(path.join(dir, name)).map((sub) => path.join(name, sub)) : [name]));
+    const visited = new Set();
     const broken = [];
-    for (const dir of dirs) {
-      for (const name of children(dir)) {
-        if (!fs.existsSync(path.join(dir, name, "package.json"))) broken.push(path.join(dir, name));
+    const queue = names.map((name) => fs.realpathSync("node_modules/" + name));
+    while (queue.length > 0) {
+      const real = queue.pop();
+      const match = /^(.*\/node_modules\/\.pnpm\/[^/]+\/node_modules)\//.exec(real);
+      if (!match || visited.has(match[1])) continue;
+      visited.add(match[1]);
+      for (const name of children(match[1])) {
+        const dep = path.join(match[1], name);
+        if (fs.existsSync(path.join(dep, "package.json"))) queue.push(fs.realpathSync(dep));
+        else broken.push(path.relative(process.cwd(), dep));
       }
     }
     if (broken.length > 0) {
