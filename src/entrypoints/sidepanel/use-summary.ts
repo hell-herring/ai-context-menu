@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { browser } from "wxt/browser";
 import { isExcludedJob, JobReceiver, needsConfirmation } from "../../lib/job/receive";
-import { type ModelOverflow, planRequest } from "../../lib/job/request";
+import { type ModelOverflow, planRequest, type RequestPlan } from "../../lib/job/request";
 import { PROVIDERS } from "../../lib/providers/registry";
 import { resolveProvider } from "../../lib/providers/select";
 import {
@@ -53,18 +53,21 @@ function resolveTarget(settings: CoreSettings, apiKeys: ApiKeys) {
   return provider && apiKey ? { provider, apiKey } : undefined;
 }
 
-/** ジョブを受け取った時点で、選択中のモデルの入力上限に収まるか（収まらなければ内訳） */
-function receivedOverflow(
+/**
+ * ジョブを受け取った時点での、選択中のモデルのコンテキスト長による判定。
+ * 収まらない（`overflow`）・本文を空にしても収まらない（`tooLong`）場合にその結果を返す
+ */
+function receivedModelCheck(
   job: ContentJob,
   settings: CoreSettings,
   apiKeys: ApiKeys,
-): ModelOverflow | undefined {
+): Exclude<RequestPlan, { kind: "ready" }> | undefined {
   const target = resolveTarget(settings, apiKeys);
   if (!target) {
     return undefined;
   }
   const plan = planRequest(job, settings, target.provider, browser.i18n.getUILanguage(), false);
-  return plan.kind === "overflow" ? plan.overflow : undefined;
+  return plan.kind === "ready" ? undefined : plan;
 }
 
 /**
@@ -207,15 +210,24 @@ export function useSummary() {
       }
       // 設定を読めなければ確認する側に倒す
       const mode = settings?.confirmBeforeSend ?? "always";
-      const overflow = settings && apiKeys ? receivedOverflow(job, settings, apiKeys) : undefined;
+      const check = settings && apiKeys ? receivedModelCheck(job, settings, apiKeys) : undefined;
+      const summary = { kind: "summary", job, target: undefined, text: "" } as const;
+      if (check?.kind === "tooLong") {
+        // どう切り詰めても送れないため、確認を出さずにエラーにする
+        setState({
+          ...summary,
+          phase: { kind: "error", error: "context_length" },
+          fitToModel: false,
+          fittedChars: undefined,
+        });
+        return;
+      }
+      const overflow: ModelOverflow | undefined = check?.overflow;
       // 上限超過・メタデータ短縮・モデルの入力上限の超過は設定に関わらず、黙って送らずに確認する
       if (needsConfirmation(job, mode) || overflow) {
         setState({
-          kind: "summary",
-          job,
-          target: undefined,
+          ...summary,
           phase: { kind: "confirm", overflow },
-          text: "",
           fitToModel: false,
           fittedChars: undefined,
         });
