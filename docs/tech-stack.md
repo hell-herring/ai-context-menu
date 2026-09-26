@@ -42,6 +42,7 @@
 | `https://api.openai.com/*` | OpenAI API |
 
 - **`<all_urls>` / `tabs` / `webRequest` / `cookies` / `history` は要求しない。** コンテンツスクリプトの常時注入（`content_scripts` 宣言）もしない。
+- Gemini 対応時（[spec D-5](./spec.md#61-決定事項)）に `https://generativelanguage.googleapis.com/*` を host_permissions に追加する。追加はその PR で人間の承認を得る。
 - ローカル LLM・任意のエンドポイントには対応しない（[spec D-4](./spec.md#61-決定事項)）。SDK の `baseURL` はユーザー設定にせず、各社公式ホスト固定とする。
 - 権限一覧はテストでスナップショット固定する（→ [ガードレール §5](./guardrails.md#5-開発プロセスのガードレール)）。
 - `minimum_chrome_version: "116"`。
@@ -136,7 +137,7 @@ export type StreamEvent =
   | { type: "done"; stopReason: "end" | "max_tokens" | "refusal"; usage?: { inputTokens: number; outputTokens: number } };
 
 export interface Provider {
-  id: "anthropic" | "openai";
+  id: "anthropic" | "openai"; // Phase 2 で "gemini" を追加予定
   displayName: string;
   listModels(apiKey: string): Promise<string[]>;
   verifyKey(apiKey: string): Promise<void>;          // 接続テスト
@@ -161,6 +162,10 @@ export interface Provider {
 **OpenAI**
 - `new OpenAI({ apiKey, dangerouslyAllowBrowser: true })`、ストリーミング API を使用。
 - 既定モデルは実装時点の公式ドキュメントで決定し、定数 1 箇所で管理する。
+
+**Gemini（Phase 2）**
+- Google 公式 SDK（実装時点で推奨されているもの。現時点の想定は `@google/genai`）を使い、`Provider` アダプタを 1 つ追加するだけで UI 側の変更が不要な設計を保つ。
+- 既定モデル・ストリーミング方式・ブラウザからの利用可否は実装時に公式ドキュメントで確認する。
 
 ### 4.6 プロンプト構成
 

@@ -54,7 +54,7 @@
 ### 3.4 依存関係（サプライチェーン）
 
 - **MUST** `pnpm-lock.yaml` をコミットし、CI は `--frozen-lockfile` で導入する。
-- **MUST** ランタイム依存の追加は PR で理由を説明する。現在の許可リスト: `react`, `react-dom`, `@anthropic-ai/sdk`, `openai`, `@mozilla/readability`, `react-markdown`, `remark-gfm`, `zod`。
+- **MUST** ランタイム依存の追加は PR で理由を説明する。現在の許可リスト: `react`, `react-dom`, `@anthropic-ai/sdk`, `openai`, `@mozilla/readability`, `react-markdown`, `remark-gfm`, `zod`。Gemini 対応時に Google 公式 SDK を追加予定（その PR で承認を得る）。
 - **SHOULD** 依存は週次で自動更新 PR（Renovate/Dependabot）を受け、`pnpm audit` を CI で実行する。
 - **MUST NOT** `postinstall` 等でネットワークからコードを取得するパッケージを安易に入れない。
 
