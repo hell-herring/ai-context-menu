@@ -39,7 +39,8 @@ pnpm lint             # biome ci .
 pnpm format           # biome format --write .
 pnpm typecheck        # wxt prepare && tsc --noEmit
 pnpm test             # vitest run
-pnpm test:e2e         # Playwright（モックプロバイダ使用、実 API は呼ばない）
+pnpm build:e2e        # E2E 用ビルド（モックプロバイダ入り、.output/e2e。配布禁止）
+pnpm test:e2e         # Playwright（build:e2e の出力を使用、実 API は呼ばない）
 ```
 
 ## アーキテクチャの要点

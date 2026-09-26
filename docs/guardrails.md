@@ -25,7 +25,7 @@
 - **MUST NOT** 入力を黙って切り詰めない。上限超過時はユーザーに確認する。
 - **MUST** 除外ドメイン設定に一致するページではコンテンツ取得・送信を行わない（取得より前に判定）。判定はトップレベルのページ URL とクリックされたフレームの URL の両方で行う。
 - **MUST** 抽出テキストと結果は `storage.session`（メモリのみ）に置く。永続履歴を実装する場合はオプトイン・既定 OFF・一括削除機能を必須とする。
-- **MUST NOT** Cookie、フォーム入力値、`<input type="password">` の値、localStorage などページの状態を取得しない。取得するのは選択テキストと可視本文のみ。入力欄・`contenteditable` 内での選択（`info.editable`）は拒否する。
+- **MUST NOT** Cookie、フォーム入力値、`<input type="password">` の値、localStorage などページの状態を取得しない。取得するのは選択テキストと可視本文のみ。入力欄・`contenteditable` 内での選択（`info.editable`）は拒否する。ページ本文の抽出でもフォーム部品と `contenteditable` 要素を除去してから抽出する。
 - **MUST** プロバイダへ送る URL はユーザー情報・クエリ・フラグメントを除去し `origin + pathname` のみにする。
 - **MUST** 1 回のユーザー操作につき外部送信は最大 1 回。ジョブは送信前に削除して 1 回だけ消費する（[技術選定 §4.2](./tech-stack.md#42-処理シーケンス)）。
 

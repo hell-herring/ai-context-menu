@@ -52,12 +52,12 @@
 | ストア | キー | 内容 | 理由 |
 |---|---|---|---|
 | `storage.local` | `secrets.<provider>.apiKey` | API キー | **同期させない**（Google アカウント経由で他端末に複製しない）。拡張のみアクセス可 |
-| `storage.sync` | `settings.core` / `settings.excludedDomains` / `settings.presets` | 設定（プロバイダ・モデル・言語・上限）／除外ドメイン／ユーザー定義プリセット | 端末間で同期して良い非機密情報のみ。増えうる一覧は別キーに分ける（下記） |
+| `storage.sync` | `settings.core` / `settings.excludedDomains` / `settings.preset.<id>`（1 プリセット 1 キー） | 設定（プロバイダ・モデル・言語・上限）／除外ドメイン／ユーザー定義プリセット | 端末間で同期して良い非機密情報のみ。増えうる一覧は別キーに分ける（下記） |
 | `storage.session` | `job.<windowId>`, `recent` | 要約ジョブ（抽出済みテキスト）と直近結果 | メモリ上のみ・ブラウザ終了で消える。既定でコンテンツスクリプトからアクセス不可 |
 
 - すべてのストレージ読み書きは `lib/storage/` 経由とし、zod スキーマで検証する。スキーマにバージョンを持たせ、マイグレーション関数を用意する。
 - `storage.local` は暗号化されない点をオンボーディングで明示する（キーは使用量上限を設定したものを推奨）。
-- `storage.sync` には 1 項目あたり・全体の容量上限（`QUOTA_BYTES_PER_ITEM` / `QUOTA_BYTES`）がある。増えうる一覧は別キーに分け、件数・文字数の上限を zod スキーマで強制する（例: 除外ドメイン最大 200 件、プリセット最大 20 件・指示文 2,000 文字）。書き込み失敗（容量超過）は握りつぶさず設定画面に表示する。
+- `storage.sync` には 1 項目あたり・全体の容量上限（`QUOTA_BYTES_PER_ITEM` / `QUOTA_BYTES`）がある。増えうる一覧は別キーに分け（プリセットは 1 件 1 キー）、件数・文字数の上限を zod スキーマで強制する（除外ドメイン最大 200 件、プリセット最大 10 件・指示文 1,000 文字）。加えて**各項目の書き込み前に `JSON.stringify` した UTF-8 バイト数を検査**し、1 項目 7,000 バイト（`QUOTA_BYTES_PER_ITEM` = 8,192 に余裕を持たせる）・全体 80,000 バイト（`QUOTA_BYTES` = 102,400）を超える保存は拒否して理由を表示する（文字数上限だけでは多バイト文字で超過しうるため）。書き込み失敗（容量超過）は握りつぶさず設定画面に表示する。
 
 ## 4. アーキテクチャ
 
@@ -90,9 +90,10 @@
 2. **最初に** `const opening = chrome.sidePanel.open({ windowId: tab.windowId })` を呼ぶ（ユーザー操作のコンテキストを失う前に。ここより前に `await` を挟まない）
 3. `await opening` し、**失敗したら以降を中止する**（抽出もジョブ書き込みもしない）。パネルが開けないままバックグラウンドで送信が進むことを防ぐ
 4. 除外ドメイン判定（`info.pageUrl` と `info.frameUrl` の両方）・`info.editable` 判定 → 該当すればエラージョブを書き込んで終了
-5. `scripting.executeScript` で選択テキスト or 本文を取得
-6. `storage.session` の `job.<windowId>` にジョブ（`id`（UUID）, `windowId`, `source`, `presetId`, `createdAt`）を書き込む
-7. サイドパネルがジョブを受け取り（下記）、入力サイズ確認 → プロバイダ呼び出し → ストリーミング表示
+5. `scripting.executeScript` で選択テキスト or 本文を取得（注入スクリプト側でも返す文字数をハード上限 1,000,000 文字で打ち切り、元の文字数を併せて返す）
+6. **ジョブ書き込み前に**文字数を測り、設定の最大入力文字数を超えていれば先頭から上限までに切り詰めたうえで `originalLength` と `oversize: true` を付ける（`storage.session` の容量上限で書き込みが失敗するのを防ぐ。確認なしに送らないため、サイドパネルは `oversize` のジョブを必ずユーザー確認に回す）
+7. `storage.session` の `job.<windowId>` にジョブ（`id`（UUID）, `windowId`, `source`（本文・`originalLength`・`oversize` を含む）, `presetId`, `createdAt`）を書き込む
+8. サイドパネルがジョブを受け取り（下記）、入力サイズ確認（`oversize` なら「先頭から上限まで送信 / キャンセル」を表示） → プロバイダ呼び出し → ストリーミング表示
 
 **ジョブは 1 回だけ消費する**（二重送信・二重課金の防止）:
 - サイドパネルはウィンドウ単位（`windowId` 指定で開く）とし、起動時に `chrome.windows.getCurrent()` で自分の `windowId` を得て、`job.<自分の windowId>` だけを読む。
@@ -209,10 +210,11 @@ user:
 | `pnpm format` | `biome format --write .` |
 | `pnpm typecheck` | `wxt prepare && tsc --noEmit` |
 | `pnpm test` | `vitest run`（単体） |
-| `pnpm test:e2e` | Playwright（ビルド済み拡張を読み込み、モックプロバイダで検証） |
+| `pnpm build:e2e` | E2E 用ビルド（`wxt build --mode e2e`、出力は本番と別ディレクトリ `.output/e2e/`。モックプロバイダを含む） |
+| `pnpm test:e2e` | Playwright（`build:e2e` の出力を読み込み、モックプロバイダで検証） |
 | `pnpm check` | lint + typecheck + test をまとめて実行（PR 前に必須） |
 
-CI（GitHub Actions）は `pnpm install --frozen-lockfile` → `check` → `build` → `test:e2e` を実行し、ビルド成果物の zip をアーティファクトとして保存する。
+CI（GitHub Actions）は `pnpm install --frozen-lockfile` → `check` → `build`（本番）→ 本番出力の manifest スナップショット・テスト専用マーカー検査 → `build:e2e` → `test:e2e` を実行し、**本番ビルド**の zip をアーティファクトとして保存する。E2E 用ビルドは配布しない。
 
 ## 6. テスト戦略
 
