@@ -25,6 +25,14 @@ type StoredKeys = Record<ProviderId, string | undefined>;
 export function App() {
   const [keys, setKeys] = useState<StoredKeys | undefined>(undefined);
   const [settings, setSettings] = useState<CoreSettings | undefined>(undefined);
+  /**
+   * キーを保存・削除するたびに増やす版数。マスク表示（末尾 4 文字）は別のキーでも同じになりうるため、
+   * キーが変わったこと（古いキーで取得したモデル一覧を捨てること）はこちらで判定する
+   */
+  const [keyVersions, setKeyVersions] = useState<Record<ProviderId, number>>({
+    anthropic: 0,
+    openai: 0,
+  });
   const [loadError, setLoadError] = useState(false);
   /** キーの登録状況（保存・削除の処理順に更新する。描画時点の値ではなくこちらで既定プロバイダを判定する） */
   const registeredRef = useRef<Record<ProviderId, boolean> | undefined>(undefined);
@@ -57,6 +65,7 @@ export function App() {
 
   const onKeyChange = useCallback(
     (provider: ProviderId, masked: string | undefined) => {
+      setKeyVersions((current) => ({ ...current, [provider]: current[provider] + 1 }));
       const task = queueRef.current.then(async () => {
         const before = registeredRef.current;
         if (!before) {
@@ -112,7 +121,8 @@ export function App() {
             >
               <ModelSection
                 provider={provider}
-                storedKey={keys[provider]}
+                hasKey={keys[provider] !== undefined}
+                keyVersion={keyVersions[provider]}
                 settings={settings}
                 onSave={saveSettings}
               />

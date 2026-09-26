@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useId, useState } from "react";
+import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { t } from "../../lib/i18n";
 import { DEFAULT_MODELS } from "../../lib/providers/defaults";
 import { PROVIDER_ERROR_MESSAGES } from "../../lib/providers/error-messages";
@@ -19,44 +19,63 @@ const numberFormat = new Intl.NumberFormat();
  */
 export function ModelSection({
   provider,
-  storedKey,
+  hasKey,
+  keyVersion,
   settings,
   onSave,
 }: {
   provider: ProviderId;
-  /** 保存済みの API キー（マスク済み）。未設定なら undefined */
-  storedKey: string | undefined;
+  hasKey: boolean;
+  /** API キーを保存・削除するたびに変わる値（古いキーで取得した一覧を捨てるため） */
+  keyVersion: number;
   settings: CoreSettings;
   onSave: (update: (current: CoreSettings) => CoreSettingsPatch) => Promise<CoreSettings>;
 }) {
   const inputId = useId();
   const listId = useId();
   const hintId = useId();
-  const hasKey = storedKey !== undefined;
   const saved = settings.models[provider];
   const [input, setInput] = useState(saved);
   const [models, setModels] = useState<ModelInfo[] | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | undefined>(undefined);
+  /** 描画に反映済みのキーの版数（取得中にキーが変わったかを非同期処理の完了時に判定する） */
+  const keyVersionRef = useRef(keyVersion);
 
   // 他の操作で保存値が変わったら入力欄も合わせる
   useEffect(() => setInput(saved), [saved]);
   // キーを削除・差し替えたら、古いキーで取得した一覧は使わない
-  // biome-ignore lint/correctness/useExhaustiveDependencies: キーが変わったときだけ一覧を捨てる
-  useEffect(() => setModels(undefined), [storedKey]);
+  useEffect(() => {
+    keyVersionRef.current = keyVersion;
+    setModels(undefined);
+  }, [keyVersion]);
 
-  /** Models API から一覧を取得する（ユーザーの操作時のみ）。失敗したら理由を表示して undefined */
-  const fetchModels = async (): Promise<ModelInfo[] | undefined> => {
+  /**
+   * Models API から一覧を取得する（ユーザーの操作時のみ）。失敗したら理由を表示して undefined。
+   * 取得中にキーが変わった場合は、古いキーの結果として捨てて `"stale"` を返す
+   */
+  const fetchModels = async (): Promise<ModelInfo[] | "stale" | undefined> => {
+    const version = keyVersionRef.current;
+    const isStale = () => keyVersionRef.current !== version;
     try {
       const apiKey = await getApiKey(provider);
+      if (isStale()) {
+        return "stale";
+      }
       if (apiKey === undefined) {
         setNotice({ message: t("optionsModelNeedsKey"), tone: "error" });
         return undefined;
       }
       const list = await PROVIDERS[provider].listModels(apiKey);
+      if (isStale()) {
+        return "stale";
+      }
       setModels(list);
       return list;
     } catch (error) {
+      if (isStale()) {
+        return "stale";
+      }
       const kind = error instanceof ProviderError ? error.kind : "unknown";
       setNotice({ message: t(PROVIDER_ERROR_MESSAGES[kind]), tone: "error" });
       return undefined;
@@ -68,7 +87,10 @@ export function ModelSection({
     setNotice({ message: t("optionsModelFetching"), tone: "info" });
     try {
       const list = await fetchModels();
-      if (list) {
+      if (list === "stale") {
+        // 取得中にキーが変わった。古いキーの一覧は表示しない
+        setNotice(undefined);
+      } else if (list) {
         setNotice({ message: t("optionsModelFetched", String(list.length)), tone: "success" });
       }
     } finally {
@@ -86,8 +108,10 @@ export function ModelSection({
     const model = parsed.data;
     setBusy(true);
     try {
-      // 一覧にあるか確認するため、未取得なら取得する（キーがなければ確認せずに保存する）
-      const list = models ?? (hasKey ? await fetchModels() : undefined);
+      // 一覧にあるか確認するため、未取得なら取得する（キーがなければ確認せずに保存する）。
+      // 取得中にキーが変わった場合は、古いキーの一覧で確認・上限の記録をせず、確認していない扱いにする
+      const fetched = models ?? (hasKey ? await fetchModels() : undefined);
+      const list = fetched === "stale" ? undefined : fetched;
       const limits = list && modelLimitsFrom(model, list);
       const next = await onSave((current) => ({
         models: { ...current.models, [provider]: model },
