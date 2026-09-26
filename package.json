@@ -1,6 +1,6 @@
 {
   "name": "ai-context-menu",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "右クリックで選択テキストやページ本文を AI に要約させる Chrome 拡張機能",
   "license": "MIT",
