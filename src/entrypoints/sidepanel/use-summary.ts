@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { browser } from "wxt/browser";
-import { isExcludedJob, JobReceiver } from "../../lib/job/receive";
+import { isExcludedJob, JobReceiver, needsConfirmation } from "../../lib/job/receive";
 import { buildPrompt, describeOutputLanguage } from "../../lib/prompt/build";
+import { effectiveMaxOutputTokens } from "../../lib/providers/limits";
 import { PROVIDERS } from "../../lib/providers/registry";
 import { resolveProvider } from "../../lib/providers/select";
 import {
@@ -17,6 +18,8 @@ import { readJob, removeJob, watchJob } from "../../lib/storage/session";
 import { getCoreSettings, getExcludedDomains } from "../../lib/storage/settings";
 
 export type Phase =
+  /** 受け取ったジョブの送信前の判定中（設定の読み込み中） */
+  | { kind: "preparing" }
   | { kind: "confirm" }
   | { kind: "cancelled" }
   | { kind: "streaming" }
@@ -47,6 +50,8 @@ export function useSummary() {
   const [state, setState] = useState<PanelState>({ kind: "idle" });
   const controllerRef = useRef<AbortController | undefined>(undefined);
   const runRef = useRef(0);
+  /** 最後に受け取ったジョブの ID。前のジョブの表示に対する操作（確認・再生成）を受け付けないために使う */
+  const latestJobIdRef = useRef<string | undefined>(undefined);
 
   /** 進行中のリクエストを中断し、以降の古い更新を無視させる */
   const cancelRun = useCallback(() => {
@@ -122,7 +127,8 @@ export function useSummary() {
         const events = PROVIDERS[provider].stream(apiKey, {
           ...prompt,
           model,
-          maxOutputTokens: settings.maxOutputTokens,
+          // 選択モデルの出力上限が分かる場合はそれを超えない（docs/spec.md §3.6）
+          maxOutputTokens: effectiveMaxOutputTokens(settings, provider),
           signal: controller.signal,
         });
         for await (const event of events) {
@@ -154,12 +160,27 @@ export function useSummary() {
   );
 
   const receive = useCallback(
-    (job: Job) => {
+    async (job: Job) => {
       cancelRun();
+      const run = runRef.current;
+      latestJobIdRef.current = job.id;
       if (job.kind === "error") {
         setState({ kind: "jobError", error: job.error });
-      } else if (job.source.oversize) {
-        // 上限超過・メタデータ短縮は黙って送らず、必ずユーザーに確認する
+        return;
+      }
+      // 設定を読む前に表示を新しいジョブに置き換え、前のジョブの確認・再生成ボタンを押せないようにする
+      setState({ kind: "summary", job, target: undefined, phase: { kind: "preparing" }, text: "" });
+      // 設定を読めなければ確認する側に倒す
+      const mode = await getCoreSettings().then(
+        (settings) => settings.confirmBeforeSend,
+        () => "always" as const,
+      );
+      // 設定を読む間に次のジョブを受け取っていたら何もしない
+      if (runRef.current !== run) {
+        return;
+      }
+      // 上限超過・メタデータ短縮は設定に関わらず、黙って送らずに確認する
+      if (needsConfirmation(job, mode)) {
         setState({ kind: "summary", job, target: undefined, phase: { kind: "confirm" }, text: "" });
       } else {
         void send(job);
@@ -186,7 +207,7 @@ export function useSummary() {
         // 処理しないジョブも含め、読んだジョブは削除してパネルを開き直しても再送しないようにする
         await removeJob(windowId);
         if (decision === "accept" && !disposed) {
-          receive(job);
+          await receive(job);
         }
       };
       // 取りこぼさないよう、監視を始めてから既存のジョブを読む
@@ -206,7 +227,9 @@ export function useSummary() {
     };
   }, [receive, cancelRun]);
 
-  const current = state.kind === "summary" ? state : undefined;
+  // 最後に受け取ったジョブの表示に対する操作だけを受け付ける
+  const current =
+    state.kind === "summary" && state.job.id === latestJobIdRef.current ? state : undefined;
 
   return {
     state,
@@ -223,7 +246,7 @@ export function useSummary() {
     }, [current]),
     stop: useCallback(() => controllerRef.current?.abort(), []),
     regenerate: useCallback(() => {
-      if (current) {
+      if (current && current.phase.kind !== "preparing") {
         void send(current.job);
       }
     }, [current, send]),

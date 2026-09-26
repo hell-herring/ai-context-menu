@@ -1,21 +1,44 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { type MessageKey, t } from "../../lib/i18n";
+import { t } from "../../lib/i18n";
 import { PROVIDERS } from "../../lib/providers/registry";
 import { defaultProviderAfterSave, resolveProvider } from "../../lib/providers/select";
 import { PROVIDER_IDS, type ProviderId } from "../../lib/providers/types";
+import type { CoreSettings } from "../../lib/storage/schema";
 import { getApiKeys, maskApiKey } from "../../lib/storage/secrets";
-import { getCoreSettings, updateCoreSettings } from "../../lib/storage/settings";
+import {
+  type CoreSettingsPatch,
+  getCoreSettings,
+  updateCoreSettings,
+} from "../../lib/storage/settings";
 import { ApiKeySection } from "./ApiKeySection";
 import { ExcludedDomainsSection } from "./ExcludedDomainsSection";
+import { GeneralSection } from "./GeneralSection";
+import { ModelSection } from "./ModelSection";
+import { type Notice, StatusMessage } from "./StatusMessage";
+import { FIELD } from "./styles";
 
-// 設定画面: API キー（プロバイダごと）・使用する AI・除外ドメイン。
-// 接続テスト・モデル選択・出力言語・上限などは設定画面の PR で追加する。
+// 設定画面（docs/spec.md §3.6）: 使用する AI・プロバイダごとの API キー（接続テスト）とモデル・
+// 要約の設定（出力言語・上限・送信前に確認）・除外ドメイン
 
 type StoredKeys = Record<ProviderId, string | undefined>;
 
 export function App() {
   const [keys, setKeys] = useState<StoredKeys | undefined>(undefined);
-  const [preferred, setPreferred] = useState<ProviderId | undefined>(undefined);
+  const [settings, setSettings] = useState<CoreSettings | undefined>(undefined);
+  /**
+   * キーの保存・削除を始めたとき・終えたときに増やす版数。マスク表示（末尾 4 文字）は別のキーでも
+   * 同じになりうるため、キーが変わったこと（古いキーで取得したモデル一覧を使わないこと）はこちらで判定する。
+   * 非同期処理の途中で最新の値を読めるよう ref に持ち、再描画用に state にも写す
+   */
+  const keyVersionsRef = useRef<Record<ProviderId, number>>({ anthropic: 0, openai: 0 });
+  const [keyVersions, setKeyVersions] = useState(keyVersionsRef.current);
+  const bumpKeyVersion = useCallback((provider: ProviderId) => {
+    keyVersionsRef.current = {
+      ...keyVersionsRef.current,
+      [provider]: keyVersionsRef.current[provider] + 1,
+    };
+    setKeyVersions(keyVersionsRef.current);
+  }, []);
   const [loadError, setLoadError] = useState(false);
   /** キーの登録状況（保存・削除の処理順に更新する。描画時点の値ではなくこちらで既定プロバイダを判定する） */
   const registeredRef = useRef<Record<ProviderId, boolean> | undefined>(undefined);
@@ -31,35 +54,48 @@ export function App() {
         };
         registeredRef.current = registered(stored);
         setKeys(stored);
-        setPreferred(settings.defaultProvider);
+        setSettings(settings);
       })
       .catch(() => setLoadError(true));
   }, []);
 
-  const onKeyChange = useCallback((provider: ProviderId, masked: string | undefined) => {
-    const task = queueRef.current.then(async () => {
-      const before = registeredRef.current;
-      if (!before) {
-        return;
-      }
-      registeredRef.current = { ...before, [provider]: masked !== undefined };
-      setKeys((current) => current && { ...current, [provider]: masked });
-      if (masked === undefined) {
-        return;
-      }
-      // 最初にキーを登録したプロバイダを既定にする（docs/spec.md §3.6）。
-      // 保存前に使われていたプロバイダは維持するため、保存前のキーと最新の設定で判定する
-      const { defaultProvider } = await getCoreSettings();
-      const changed = defaultProviderAfterSave(defaultProvider, provider, before);
-      if (changed !== undefined) {
-        await updateCoreSettings({ defaultProvider: changed });
-        setPreferred(changed);
-      }
-    });
-    // 1 件の失敗で後続の処理が止まらないようにする（失敗は呼び出し元のフォームで表示する）
-    queueRef.current = task.catch(() => {});
-    return task;
-  }, []);
+  /** 設定を保存し、画面の値を保存後の値にする（書き込みは lib/storage/settings.ts で 1 件ずつ行う） */
+  const saveSettings = useCallback(
+    async (patch: CoreSettingsPatch | ((current: CoreSettings) => CoreSettingsPatch)) => {
+      const saved = await updateCoreSettings(patch);
+      setSettings(saved);
+      return saved;
+    },
+    [],
+  );
+
+  const onKeyChange = useCallback(
+    (provider: ProviderId, masked: string | undefined) => {
+      bumpKeyVersion(provider);
+      const task = queueRef.current.then(async () => {
+        const before = registeredRef.current;
+        if (!before) {
+          return;
+        }
+        registeredRef.current = { ...before, [provider]: masked !== undefined };
+        setKeys((current) => current && { ...current, [provider]: masked });
+        if (masked === undefined) {
+          return;
+        }
+        // 最初にキーを登録したプロバイダを既定にする（docs/spec.md §3.6）。
+        // 保存前に使われていたプロバイダは維持するため、保存前のキーと最新の設定で判定する
+        const { defaultProvider } = await getCoreSettings();
+        const changed = defaultProviderAfterSave(defaultProvider, provider, before);
+        if (changed !== undefined) {
+          await saveSettings({ defaultProvider: changed });
+        }
+      });
+      // 1 件の失敗で後続の処理が止まらないようにする（失敗は呼び出し元のフォームで表示する）
+      queueRef.current = task.catch(() => {});
+      return task;
+    },
+    [saveSettings, bumpKeyVersion],
+  );
 
   return (
     <main className="mx-auto flex max-w-xl flex-col gap-6 p-6">
@@ -73,14 +109,13 @@ export function App() {
         </p>
       )}
 
-      {keys && (
+      {keys && settings && (
         <>
           <ProviderSection
             keys={keys}
-            preferred={preferred}
+            preferred={settings.defaultProvider}
             onSelect={async (provider) => {
-              await updateCoreSettings({ defaultProvider: provider });
-              setPreferred(provider);
+              await saveSettings({ defaultProvider: provider });
             }}
           />
           {PROVIDER_IDS.map((provider) => (
@@ -88,9 +123,20 @@ export function App() {
               key={provider}
               provider={provider}
               stored={keys[provider]}
+              onChangeStart={() => bumpKeyVersion(provider)}
               onChange={(masked) => onKeyChange(provider, masked)}
-            />
+            >
+              <ModelSection
+                provider={provider}
+                hasKey={keys[provider] !== undefined}
+                keyVersion={keyVersions[provider]}
+                getKeyVersion={() => keyVersionsRef.current[provider]}
+                settings={settings}
+                onSave={saveSettings}
+              />
+            </ApiKeySection>
           ))}
+          <GeneralSection settings={settings} onSave={saveSettings} />
         </>
       )}
 
@@ -115,16 +161,16 @@ function ProviderSection({
 }) {
   const headingId = useId();
   const selectId = useId();
-  const [notice, setNotice] = useState<{ key: MessageKey; error: boolean } | undefined>(undefined);
+  const [notice, setNotice] = useState<Notice | undefined>(undefined);
   const available = PROVIDER_IDS.filter((provider) => keys[provider] !== undefined);
   const current = resolveProvider(preferred, registered(keys));
 
   const select = async (provider: ProviderId) => {
     try {
       await onSelect(provider);
-      setNotice({ key: "optionsSaved", error: false });
+      setNotice({ message: t("optionsSaved"), tone: "success" });
     } catch {
-      setNotice({ key: "optionsSaveFailed", error: true });
+      setNotice({ message: t("optionsSaveFailed"), tone: "error" });
     }
   };
 
@@ -150,7 +196,7 @@ function ProviderSection({
                 void select(provider);
               }
             }}
-            className="rounded-md border border-neutral-300 bg-transparent px-3 py-1.5 text-sm dark:border-neutral-600"
+            className={FIELD}
           >
             {available.map((provider) => (
               <option key={provider} value={provider}>
@@ -160,13 +206,7 @@ function ProviderSection({
           </select>
         </div>
       )}
-      <p
-        role="status"
-        aria-live="polite"
-        className={`text-sm ${notice?.error ? "text-red-700 dark:text-red-400" : "text-green-700 dark:text-green-400"}`}
-      >
-        {notice && t(notice.key)}
-      </p>
+      <StatusMessage notice={notice} />
     </section>
   );
 }

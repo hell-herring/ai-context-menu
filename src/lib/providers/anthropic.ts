@@ -1,6 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { BetaMessageStreamParams } from "@anthropic-ai/sdk/resources/beta/messages/messages";
-import { type Provider, ProviderError, type StopReason, type StreamEvent } from "./types";
+import {
+  type ModelInfo,
+  type Provider,
+  ProviderError,
+  type StopReason,
+  type StreamEvent,
+} from "./types";
 
 /** 送信先は公式ホストに固定する（ユーザー設定・環境変数で変更させない。docs/guardrails.md §1） */
 const ANTHROPIC_BASE_URL = "https://api.anthropic.com";
@@ -46,11 +52,15 @@ export function createAnthropicProvider(options: AnthropicProviderOptions = {}):
 
     async listModels(apiKey) {
       try {
-        const ids: string[] = [];
+        const models: ModelInfo[] = [];
         for await (const model of createClient(apiKey).models.list()) {
-          ids.push(model.id);
+          models.push({
+            id: model.id,
+            maxInputTokens: model.max_input_tokens ?? undefined,
+            maxOutputTokens: model.max_tokens ?? undefined,
+          });
         }
-        return ids;
+        return models;
       } catch (error) {
         throw toProviderError(error);
       }

@@ -3,6 +3,7 @@ import { browser } from "wxt/browser";
 import { MarkdownView } from "../../components/MarkdownView";
 import { type MessageKey, t } from "../../lib/i18n";
 import { estimateTokens } from "../../lib/prompt/tokens";
+import { PROVIDER_ERROR_MESSAGES } from "../../lib/providers/error-messages";
 import { PROVIDERS } from "../../lib/providers/registry";
 import type { ContentJob, JobErrorCode } from "../../lib/storage/schema";
 import { type PanelState, type Phase, useSummary } from "./use-summary";
@@ -16,15 +17,9 @@ const JOB_ERROR_MESSAGES = {
 } as const satisfies Record<JobErrorCode, MessageKey>;
 
 const PHASE_ERROR_MESSAGES = {
+  ...PROVIDER_ERROR_MESSAGES,
   apiKeyMissing: "errorApiKeyMissing",
   excludedDomain: "errorExcludedDomain",
-  auth: "errorAuth",
-  rate_limit: "errorRateLimit",
-  overloaded: "errorOverloaded",
-  network: "errorNetwork",
-  bad_request: "errorBadRequest",
-  aborted: "statusStopped",
-  unknown: "errorUnknown",
 } as const satisfies Record<Extract<Phase, { kind: "error" }>["error"], MessageKey>;
 
 const numberFormat = new Intl.NumberFormat(browser.i18n.getUILanguage());
@@ -82,7 +77,7 @@ function Body({
         <>
           <SourceInfo job={state.job} />
           {state.phase.kind === "confirm" ? (
-            <OversizeConfirm job={state.job} onConfirm={onConfirm} onCancel={onCancel} />
+            <SendConfirm job={state.job} onConfirm={onConfirm} onCancel={onCancel} />
           ) : (
             <>
               {state.text !== "" && <MarkdownView text={state.text} />}
@@ -122,7 +117,8 @@ function SourceInfo({ job }: { job: ContentJob }) {
   );
 }
 
-function OversizeConfirm({
+/** 送信前の確認。上限超過なら理由と「先頭から上限まで送信」、そうでなければ（設定「常に」）送信するかを尋ねる */
+function SendConfirm({
   job,
   onConfirm,
   onCancel,
@@ -132,6 +128,24 @@ function OversizeConfirm({
   onCancel: () => void;
 }) {
   const { source } = job;
+  if (!source.oversize) {
+    return (
+      <section
+        className="flex flex-col gap-2 rounded-md border border-neutral-300 p-3 text-sm dark:border-neutral-600"
+        aria-labelledby="confirm-title"
+      >
+        <h2 id="confirm-title" className="font-semibold">
+          {t("confirmTitle")}
+        </h2>
+        <div className="flex gap-2">
+          <Button onClick={onConfirm} primary>
+            {t("buttonSend")}
+          </Button>
+          <Button onClick={onCancel}>{t("buttonCancel")}</Button>
+        </div>
+      </section>
+    );
+  }
   return (
     <section
       className="flex flex-col gap-2 rounded-md border border-amber-400 p-3 text-sm dark:border-amber-600"
@@ -171,6 +185,7 @@ function Status({ phase }: { phase: Phase }) {
 
 function StatusText({ phase }: { phase: Phase }) {
   switch (phase.kind) {
+    case "preparing":
     case "confirm":
       return null;
     case "cancelled":
@@ -217,7 +232,7 @@ function Actions({
   onRegenerate: () => void;
 }) {
   const { phase } = state;
-  if (phase.kind === "confirm") {
+  if (phase.kind === "preparing" || phase.kind === "confirm") {
     return null;
   }
   const streaming = phase.kind === "streaming";

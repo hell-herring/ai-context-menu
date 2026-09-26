@@ -230,19 +230,30 @@ describe("AnthropicProvider.listModels / verifyKey", () => {
             id: "claude-opus-5",
             display_name: "Claude Opus 5",
             created_at: "2026-01-01T00:00:00Z",
+            max_input_tokens: 1_000_000,
+            max_tokens: 128_000,
+          },
+          {
+            type: "model",
+            id: "claude-legacy",
+            display_name: "Legacy",
+            created_at: "2024-01-01T00:00:00Z",
+            max_input_tokens: null,
+            max_tokens: null,
           },
         ],
         has_more: false,
         first_id: "claude-opus-5",
-        last_id: "claude-opus-5",
+        last_id: "claude-legacy",
       }),
       { status: 200, headers: { "content-type": "application/json" } },
     );
 
-  it("モデル ID の一覧を返す", async () => {
+  it("モデル ID と入出力の上限を返す（不明な上限は undefined）", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => models());
     expect(await createAnthropicProvider({ fetch: fetchMock }).listModels(DUMMY_KEY)).toEqual([
-      "claude-opus-5",
+      { id: "claude-opus-5", maxInputTokens: 1_000_000, maxOutputTokens: 128_000 },
+      { id: "claude-legacy", maxInputTokens: undefined, maxOutputTokens: undefined },
     ]);
   });
 

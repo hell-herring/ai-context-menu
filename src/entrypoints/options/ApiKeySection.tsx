@@ -1,10 +1,17 @@
-import { type FormEvent, useId, useState } from "react";
+import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
 import { type MessageKey, t } from "../../lib/i18n";
+import { PROVIDER_ERROR_MESSAGES } from "../../lib/providers/error-messages";
 import { PROVIDERS } from "../../lib/providers/registry";
-import type { ProviderId } from "../../lib/providers/types";
-import { maskApiKey, normalizeApiKey, removeApiKey, setApiKey } from "../../lib/storage/secrets";
-
-type Notice = { key: MessageKey; error: boolean };
+import { ProviderError, type ProviderId } from "../../lib/providers/types";
+import {
+  getApiKey,
+  maskApiKey,
+  normalizeApiKey,
+  removeApiKey,
+  setApiKey,
+} from "../../lib/storage/secrets";
+import { type Notice, StatusMessage } from "./StatusMessage";
+import { FIELD, HINT, PRIMARY_BUTTON, SECONDARY_BUTTON } from "./styles";
 
 const HEADINGS = {
   anthropic: "optionsAnthropicHeading",
@@ -17,49 +24,101 @@ const PLACEHOLDERS: Record<ProviderId, string> = {
   openai: "sk-...",
 };
 
-/** プロバイダ 1 つ分の API キーの保存・削除。キーは storage.local のみに置く（docs/guardrails.md §1） */
+/**
+ * プロバイダ 1 つ分の設定。API キーの保存・削除・接続テストと、`children`（モデルの設定）を表示する。
+ * キーは storage.local のみに置く（docs/guardrails.md §1）
+ */
 export function ApiKeySection({
   provider,
   stored,
+  onChangeStart,
   onChange,
+  children,
 }: {
   provider: ProviderId;
   /** 保存済みのキー（マスク済み）。未設定なら undefined */
   stored: string | undefined;
   /** 保存・削除の後に呼ぶ。引数は新しいマスク済みのキー */
   onChange: (masked: string | undefined) => Promise<void>;
+  /** 保存・削除を始める直前に呼ぶ（古いキーで取得したモデル一覧を、書き込みの途中から使わせないため） */
+  onChangeStart: () => void;
+  children?: ReactNode;
 }) {
   const headingId = useId();
   const inputId = useId();
   const [input, setInput] = useState("");
   const [notice, setNotice] = useState<Notice | undefined>(undefined);
+  /**
+   * 保存・削除・接続テストのいずれかを実行中。実行中は他の操作を受け付けない
+   * （接続テストの途中でキーが差し替わり、古いキーの結果を新しいキーの結果として表示しないように）
+   */
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
 
-  const save = async (event: FormEvent) => {
-    event.preventDefault();
-    const apiKey = normalizeApiKey(input);
-    if (apiKey === undefined) {
-      setNotice({ key: "optionsInvalidKey", error: true });
+  /** 操作を 1 つずつ実行する（ボタンの無効化に加え、Enter キーでの送信なども弾く） */
+  const exclusive = async (operation: () => Promise<void>) => {
+    if (busyRef.current) {
       return;
     }
+    busyRef.current = true;
+    setBusy(true);
     try {
-      await setApiKey(provider, apiKey);
-      setInput("");
-      await onChange(maskApiKey(apiKey));
-      setNotice({ key: "optionsSaved", error: false });
-    } catch {
-      setNotice({ key: "optionsSaveFailed", error: true });
+      await operation();
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
     }
   };
 
-  const remove = async () => {
-    try {
-      await removeApiKey(provider);
-      await onChange(undefined);
-      setNotice({ key: "optionsDeleted", error: false });
-    } catch {
-      setNotice({ key: "optionsSaveFailed", error: true });
-    }
+  const save = (event: FormEvent) => {
+    event.preventDefault();
+    return exclusive(async () => {
+      const apiKey = normalizeApiKey(input);
+      if (apiKey === undefined) {
+        setNotice({ message: t("optionsInvalidKey"), tone: "error" });
+        return;
+      }
+      try {
+        onChangeStart();
+        await setApiKey(provider, apiKey);
+        setInput("");
+        await onChange(maskApiKey(apiKey));
+        setNotice({ message: t("optionsSaved"), tone: "success" });
+      } catch {
+        setNotice({ message: t("optionsSaveFailed"), tone: "error" });
+      }
+    });
   };
+
+  const remove = () =>
+    exclusive(async () => {
+      try {
+        onChangeStart();
+        await removeApiKey(provider);
+        await onChange(undefined);
+        setNotice({ message: t("optionsDeleted"), tone: "success" });
+      } catch {
+        setNotice({ message: t("optionsSaveFailed"), tone: "error" });
+      }
+    });
+
+  /** 接続テスト（Models API でキーを検証する。ユーザーの操作時のみ送信する） */
+  const test = () =>
+    exclusive(async () => {
+      setNotice({ message: t("optionsTesting"), tone: "info" });
+      try {
+        const apiKey = await getApiKey(provider);
+        if (apiKey === undefined) {
+          setNotice({ message: t("errorApiKeyMissing"), tone: "error" });
+          return;
+        }
+        await PROVIDERS[provider].verifyKey(apiKey);
+        setNotice({ message: t("optionsConnectionOk"), tone: "success" });
+      } catch (error) {
+        const kind = error instanceof ProviderError ? error.kind : "unknown";
+        setNotice({ message: t(PROVIDER_ERROR_MESSAGES[kind]), tone: "error" });
+      }
+    });
 
   return (
     <section className="flex flex-col gap-3" aria-labelledby={headingId}>
@@ -81,36 +140,37 @@ export function ApiKeySection({
           value={input}
           onChange={(event) => setInput(event.target.value)}
           placeholder={PLACEHOLDERS[provider]}
-          className="rounded-md border border-neutral-300 bg-transparent px-3 py-1.5 font-mono text-sm dark:border-neutral-600"
+          className={`${FIELD} font-mono`}
         />
-        <div className="flex gap-2">
-          <button
-            type="submit"
-            className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm text-white hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
-          >
+        <div className="flex flex-wrap gap-2">
+          <button type="submit" disabled={busy} className={PRIMARY_BUTTON}>
             {t("optionsSave")}
           </button>
           {stored && (
-            <button
-              type="button"
-              onClick={() => void remove()}
-              className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-600 dark:hover:bg-neutral-800"
-            >
-              {t("optionsDelete")}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => void test()}
+                disabled={busy}
+                className={SECONDARY_BUTTON}
+              >
+                {t("optionsTestConnection")}
+              </button>
+              <button
+                type="button"
+                onClick={() => void remove()}
+                disabled={busy}
+                className={SECONDARY_BUTTON}
+              >
+                {t("optionsDelete")}
+              </button>
+            </>
           )}
         </div>
       </form>
-      <p className="text-neutral-600 text-xs dark:text-neutral-400">
-        {t("optionsStorageNote", PROVIDERS[provider].displayName)}
-      </p>
-      <p
-        role="status"
-        aria-live="polite"
-        className={`text-sm ${notice?.error ? "text-red-700 dark:text-red-400" : "text-green-700 dark:text-green-400"}`}
-      >
-        {notice && t(notice.key)}
-      </p>
+      <p className={HINT}>{t("optionsStorageNote", PROVIDERS[provider].displayName)}</p>
+      <StatusMessage notice={notice} />
+      {children}
     </section>
   );
 }

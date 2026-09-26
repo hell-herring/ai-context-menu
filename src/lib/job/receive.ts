@@ -1,5 +1,5 @@
 import { isExcludedHostname, isExcludedPage, isExcludedUrl } from "../domain/exclude";
-import type { ContentJob, Job } from "../storage/schema";
+import type { ConfirmMode, ContentJob, Job } from "../storage/schema";
 
 /** これより古いジョブは送信せず破棄する（取り残されたジョブの誤送信防止。docs/tech-stack.md §4.2） */
 export const JOB_MAX_AGE_MS = 60_000;
@@ -55,4 +55,12 @@ export function isExcludedJob(job: ContentJob, patterns: readonly string[]): boo
     isExcludedUrl(job.source.displayUrl, patterns) ||
     isExcludedUrl(job.source.providerUrl, patterns)
   );
+}
+
+/**
+ * 送信前にユーザーの確認を求めるか（docs/spec.md §3.3）。
+ * 上限超過・メタデータ短縮は設定に関わらず必ず確認する（入力を黙って切り詰めない）
+ */
+export function needsConfirmation(job: ContentJob, mode: ConfirmMode): boolean {
+  return job.source.oversize || mode === "always";
 }

@@ -53,7 +53,7 @@
 | ストア | キー | 内容 | 理由 |
 |---|---|---|---|
 | `storage.local` | `secrets.<provider>.apiKey` | API キー | **同期させない**（Google アカウント経由で他端末に複製しない）。拡張のみアクセス可 |
-| `storage.sync` | `settings.core` / `settings.excludedDomains` / `settings.preset.<id>`（1 プリセット 1 キー） | 設定（プロバイダ・モデル・言語・上限）／除外ドメイン／ユーザー定義プリセット | 端末間で同期して良い非機密情報のみ。増えうる一覧は別キーに分ける（下記） |
+| `storage.sync` | `settings.core` / `settings.excludedDomains` / `settings.preset.<id>`（1 プリセット 1 キー） | 設定（プロバイダ・モデルとその入出力上限・言語・上限・送信前確認）／除外ドメイン／ユーザー定義プリセット | 端末間で同期して良い非機密情報のみ。増えうる一覧は別キーに分ける（下記） |
 | `storage.session` | `job.<windowId>`, `recent.<id>` | 要約ジョブ（抽出済みテキスト）と直近結果 | メモリ上のみ・ブラウザ終了で消える。既定でコンテンツスクリプトからアクセス不可 |
 
 - すべてのストレージ読み書きは `lib/storage/` 経由とし、zod スキーマで検証する。スキーマにバージョンを持たせ、マイグレーション関数を用意する。
@@ -167,7 +167,7 @@ export type StreamEvent =
 export interface Provider {
   id: "anthropic" | "openai"; // Phase 2 で "gemini" を追加予定
   displayName: string;
-  listModels(apiKey: string): Promise<string[]>;
+  listModels(apiKey: string): Promise<ModelInfo[]>; // { id, maxInputTokens?, maxOutputTokens? }（不明な上限は undefined）
   verifyKey(apiKey: string): Promise<void>;          // 接続テスト
   stream(apiKey: string, req: SummarizeRequest): AsyncIterable<StreamEvent>;
 }
@@ -182,7 +182,7 @@ export interface Provider {
 **Anthropic**
 - `new Anthropic({ apiKey, dangerouslyAllowBrowser: true, baseURL: "https://api.anthropic.com", logLevel: "off" })` — BYOK でユーザー自身のキーを自分のブラウザで使う用途のため許容（→ [ガードレール §1](./guardrails.md#1-秘密情報api-キー)）。`baseURL` は環境変数等に左右されないよう公式ホストに固定する。
 - サーバー側フォールバックがベータ機能のため `client.beta.messages.stream({...}, { signal })` でストリーミングする。`text_delta` を UI へ流し、`finalMessage()` で `stop_reason` / `usage` を得る。拒否後にフォールバックモデルが続きを書く場合も、テキストは同じストリームに続けて届く。
-- 既定モデル `claude-opus-5`。設定で `claude-sonnet-5` / `claude-haiku-4-5` 等へ変更可（一覧は `client.models.list()`）。
+- 既定モデル `claude-opus-5`。設定で `claude-sonnet-5` / `claude-haiku-4-5` 等へ変更可（一覧は `client.models.list()`）。一覧の `max_tokens` / `max_input_tokens`（`null` は不明）をモデルの出力・入力上限として使う。
 - `stop_reason === "refusal"` を必ず処理する。`claude-opus-5` では server-side fallback（beta `server-side-fallback-2026-07-01` + `fallbacks: "default"`）を有効にする。
 - 要約用途のため `output_config.effort` は既定 `medium`（対応モデルのみ付与。M1 の許可リストは `claude-opus-5` / `claude-sonnet-5`。設定での変更は M2）。
 - `thinking` は指定しない（`claude-opus-5` は省略時に adaptive thinking で動く。思考の表示は既定で省略されるため、テキストが届くまで少し間が空くことがある）。
@@ -194,6 +194,7 @@ export interface Provider {
 - **`store: false` を必ず付ける**（Responses API は既定でレスポンスを OpenAI 側に 30 日以上保存するため）。
 - 既定モデル `gpt-6-sol`（D-3。`src/lib/providers/defaults.ts` で管理）。要約用途のため `reasoning.effort` は `low`（許可リスト `gpt-6-sol` / `gpt-6-luna` のみ付与）。
 - モデル一覧（`client.models.list()`）はテキスト生成に使えるモデルの許可パターンで絞る（埋め込み・画像・音声・リアルタイム・検索・モデレーション・コーディング専用・pro 等を除外。`isTextGenerationModel()`）。
+- Models API は上限を返さないため、モデルの入出力上限はアダプタ内の既知値（`KNOWN_MODEL_LIMITS`）で与える。公式ドキュメントで確認できた値だけを載せ、推測で書かない（実装時点では公式ドキュメントを確認できなかったため未登録。未登録のモデルは上限不明として扱う）。
 
 **Gemini（Phase 2）**
 - Google 公式 SDK（実装時点で推奨されているもの。現時点の想定は `@google/genai`）を使い、`Provider` アダプタを 1 つ追加するだけで UI 側の変更が不要な設計を保つ。

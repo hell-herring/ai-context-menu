@@ -3,12 +3,12 @@ import { MAX_EXCLUDED_DOMAINS, parseDomainList } from "../../lib/domain/exclude"
 import { t } from "../../lib/i18n";
 import { getExcludedDomains, setExcludedDomains } from "../../lib/storage/settings";
 import { SyncQuotaError } from "../../lib/storage/sync-quota";
+import { type Notice, StatusMessage } from "./StatusMessage";
+import { FIELD, PRIMARY_BUTTON } from "./styles";
 
 /** エラー表示に含める不正な行の数と長さの上限 */
 const MAX_INVALID_SHOWN = 5;
 const MAX_INVALID_LENGTH = 80;
-
-type Notice = { message: string; error: boolean };
 
 /** 除外ドメインの編集（docs/spec.md §3.6）。1 行に 1 パターン */
 export function ExcludedDomainsSection() {
@@ -20,7 +20,7 @@ export function ExcludedDomainsSection() {
   useEffect(() => {
     getExcludedDomains()
       .then((domains) => setInput(domains.join("\n")))
-      .catch(() => setNotice({ message: t("optionsLoadFailed"), error: true }));
+      .catch(() => setNotice({ message: t("optionsLoadFailed"), tone: "error" }));
   }, []);
 
   const save = async (event: FormEvent) => {
@@ -31,27 +31,27 @@ export function ExcludedDomainsSection() {
         .slice(0, MAX_INVALID_SHOWN)
         .map((line) => line.slice(0, MAX_INVALID_LENGTH))
         .join(", ");
-      setNotice({ message: t("optionsExcludedInvalid", shown), error: true });
+      setNotice({ message: t("optionsExcludedInvalid", shown), tone: "error" });
       return;
     }
     if (domains.length > MAX_EXCLUDED_DOMAINS) {
       setNotice({
         message: t("optionsExcludedTooMany", String(MAX_EXCLUDED_DOMAINS)),
-        error: true,
+        tone: "error",
       });
       return;
     }
     try {
       await setExcludedDomains(domains);
       setInput(domains.join("\n"));
-      setNotice({ message: t("optionsSaved"), error: false });
+      setNotice({ message: t("optionsSaved"), tone: "success" });
     } catch (error) {
       // 容量超過などの書き込み失敗は握りつぶさずに表示する
       const message =
         error instanceof SyncQuotaError
           ? t(error.reason === "item" ? "optionsSyncItemQuota" : "optionsSyncTotalQuota")
           : t("optionsSaveFailed");
-      setNotice({ message, error: true });
+      setNotice({ message, tone: "error" });
     }
   };
 
@@ -75,24 +75,15 @@ export function ExcludedDomainsSection() {
           value={input}
           onChange={(event) => setInput(event.target.value)}
           placeholder={t("optionsExcludedPlaceholder")}
-          className="rounded-md border border-neutral-300 bg-transparent px-3 py-1.5 font-mono text-sm dark:border-neutral-600"
+          className={`${FIELD} font-mono`}
         />
         <div className="flex gap-2">
-          <button
-            type="submit"
-            className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm text-white hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
-          >
+          <button type="submit" className={PRIMARY_BUTTON}>
             {t("optionsSave")}
           </button>
         </div>
       </form>
-      <p
-        role="status"
-        aria-live="polite"
-        className={`text-sm ${notice?.error ? "text-red-700 dark:text-red-400" : "text-green-700 dark:text-green-400"}`}
-      >
-        {notice?.message}
-      </p>
+      <StatusMessage notice={notice} />
     </section>
   );
 }

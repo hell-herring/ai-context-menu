@@ -4,7 +4,13 @@ import type {
   Response as ResponseObject,
 } from "openai/resources/responses/responses";
 import type { ReasoningEffort } from "openai/resources/shared";
-import { type Provider, ProviderError, type StopReason, type StreamEvent } from "./types";
+import {
+  type ModelInfo,
+  type Provider,
+  ProviderError,
+  type StopReason,
+  type StreamEvent,
+} from "./types";
 
 /** 送信先は公式ホストに固定する（ユーザー設定・環境変数で変更させない。docs/guardrails.md §1） */
 const OPENAI_BASE_URL = "https://api.openai.com/v1";
@@ -35,6 +41,12 @@ const TEXT_MODEL_PATTERN = /^(gpt-\d+(\.\d+)?o?|o\d+)(-[a-z]+)*(-\d{4}-\d{2}-\d{
  */
 const NON_TEXT_MODEL_PATTERN =
   /(audio|realtime|image|transcribe|tts|search|embedding|moderation|instruct|codex|computer|research|-pro)(-|$)/;
+
+/**
+ * モデルの上限の既知値（docs/spec.md §3.3・§3.6）。OpenAI の Models API は上限を返さないため、
+ * 公式ドキュメントで確認できたものだけをここに載せる（推測で書かない）。載っていないモデルは上限不明として扱う。
+ */
+const KNOWN_MODEL_LIMITS: Record<string, Omit<ModelInfo, "id">> = {};
 
 export function isTextGenerationModel(id: string): boolean {
   return TEXT_MODEL_PATTERN.test(id) && !NON_TEXT_MODEL_PATTERN.test(id);
@@ -74,7 +86,11 @@ export function createOpenAIProvider(options: OpenAIProviderOptions = {}): Provi
             ids.push(model.id);
           }
         }
-        return ids.sort();
+        return ids.sort().map((id) => ({
+          id,
+          maxInputTokens: KNOWN_MODEL_LIMITS[id]?.maxInputTokens,
+          maxOutputTokens: KNOWN_MODEL_LIMITS[id]?.maxOutputTokens,
+        }));
       } catch (error) {
         throw toProviderError(error);
       }

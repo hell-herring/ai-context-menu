@@ -14,7 +14,32 @@ export const OUTPUT_LANGUAGES = ["browser", "ja", "en", "source"] as const;
 
 export type OutputLanguage = (typeof OUTPUT_LANGUAGES)[number];
 
-const ModelIdSchema = z.string().trim().min(1).max(200);
+/** 送信前に確認するか。`never` でも上限超過時は必ず確認する（入力を黙って切り詰めない。docs/spec.md §3.3） */
+export const CONFIRM_MODES = ["always", "oversize", "never"] as const;
+
+export type ConfirmMode = (typeof CONFIRM_MODES)[number];
+
+/** 最大入力文字数・最大出力トークンの範囲（docs/spec.md §3.6） */
+export const SETTING_RANGES = {
+  maxInputChars: { min: 1_000, max: 500_000 },
+  maxOutputTokens: { min: 256, max: 32_000 },
+} as const;
+
+export const ModelIdSchema = z.string().trim().min(1).max(200);
+
+const TokenCountSchema = z.int().positive();
+
+/**
+ * 選択したモデルの上限（モデル一覧から保存時に記録する。分からない項目は持たない）。
+ * `model` が現在のモデル設定と一致するときだけ使う（lib/providers/limits.ts）
+ */
+export const ModelLimitsSchema = z.object({
+  model: ModelIdSchema,
+  maxInputTokens: TokenCountSchema.optional(),
+  maxOutputTokens: TokenCountSchema.optional(),
+});
+
+export type ModelLimits = z.infer<typeof ModelLimitsSchema>;
 
 export const CoreSettingsSchema = z.object({
   version: z.literal(1),
@@ -25,10 +50,25 @@ export const CoreSettingsSchema = z.object({
   }),
   /** 使用するプロバイダ。未設定・キーが未登録なら、キーのあるプロバイダを使う（lib/providers/select.ts） */
   defaultProvider: z.enum(PROVIDER_IDS).optional(),
+  // 以下 2 項目は設定画面の PR で追加した。それより前に保存された値にはないため既定値で補う
+  /** プロバイダごとの、選択したモデルの上限 */
+  modelLimits: z
+    .object({
+      anthropic: ModelLimitsSchema.optional(),
+      openai: ModelLimitsSchema.optional(),
+    })
+    .default({}),
+  confirmBeforeSend: z.enum(CONFIRM_MODES).default("oversize"),
   outputLanguage: z.enum(OUTPUT_LANGUAGES),
   /** 送信する本文の上限（XML エスケープ後の文字数） */
-  maxInputChars: z.int().min(1_000).max(500_000),
-  maxOutputTokens: z.int().min(256).max(32_000),
+  maxInputChars: z
+    .int()
+    .min(SETTING_RANGES.maxInputChars.min)
+    .max(SETTING_RANGES.maxInputChars.max),
+  maxOutputTokens: z
+    .int()
+    .min(SETTING_RANGES.maxOutputTokens.min)
+    .max(SETTING_RANGES.maxOutputTokens.max),
 });
 
 export type CoreSettings = z.infer<typeof CoreSettingsSchema>;
