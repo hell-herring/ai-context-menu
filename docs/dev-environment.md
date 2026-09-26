@@ -15,7 +15,7 @@ web 版 Claude Code と web 版 Codex のどちらで作業しても、同じ版
 - 版はすべてリポジトリ内のファイルから決まる。`.node-version` / `packageManager` / `pnpm-lock.yaml` を更新すれば、次のセットアップで両環境とも追従する。
 - 実行は冪等・非対話。揃っているものは取得せず、依存が揃っていれば `pnpm install` も省略するため、2 回目以降は数秒で終わる（Chromium の起動確認のみ）。ただし Playwright の Chromium を取得できない環境（既定のネットワーク設定の web 版 Claude Code など）では、毎回取得を試みてから代替に切り替えるため、そのぶん数秒余分にかかる（実測で計 4 秒前後。§4）。
 - 最後に `--check` と同じ検査（Node.js・pnpm の版、依存、Chromium の起動）を行い、Node.js・pnpm・依存が揃っていなければ終了コード 1 で失敗する。Chromium は E2E にだけ使うため、起動できなくても（依存ライブラリを入れられなかった場合も）警告にとどめる。
-- 依存の検査はオフラインでも行えるよう pnpm には問い合わせず、このスクリプトで `pnpm install` したときの `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml` のハッシュ（`node_modules/.aicm-deps.sha256`）と比べ、あわせて pnpm の仮想ストア（`node_modules/.pnpm/lock.yaml`）と `package.json` の直接の依存がすべて `node_modules` にあることを確かめる（各パッケージの中身までは検査しない）。ブランチの切り替えなどでこれらが変わったら、スクリプトを実行し直す（手で `pnpm install` しただけでは `--check` は `NG` のまま）。
+- 依存の検査はオフラインでも行えるよう pnpm には問い合わせず、このスクリプトで `pnpm install` したときの `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml` のハッシュ（`node_modules/.aicm-deps.sha256`）と比べ、あわせて pnpm の仮想ストア（`node_modules/.pnpm/lock.yaml`）と `package.json` の直接の依存がすべて `node_modules` にあること、仮想ストア内の各パッケージとその依存へのリンクが `package.json` を指すこと（推移的な依存が欠けるとリンク切れになる）を確かめる（各パッケージの中身までは検査しない）。この検査が通れば `pnpm install` を省略し、通らなければ入れ直す。ブランチの切り替えなどでこれらが変わったら、スクリプトを実行し直す（手で `pnpm install` しただけでは `--check` は `NG` のまま）。
 
 ```bash
 bash scripts/setup-dev-env.sh          # セットアップ（冪等）

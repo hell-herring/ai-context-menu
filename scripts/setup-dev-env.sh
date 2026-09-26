@@ -56,17 +56,39 @@ case "$(uname -s)-$(uname -m)" in
   *) fail "未対応の OS/CPU です: $(uname -s)-$(uname -m)（Linux x64 / arm64 のみ）" ;;
 esac
 
-# 入れた依存が消えていないか（pnpm の仮想ストアと、package.json の直接の依存がすべてあるか）。
+# 入れた依存が消えていないか（pnpm の仮想ストアと、package.json の直接の依存、推移的な依存がすべてあるか）。
+# 推移的な依存は、仮想ストア（node_modules/.pnpm/<パッケージ>/node_modules/）の各パッケージとその依存へのリンクが
+# 実在する package.json を指すかで確かめる（依存が消えるとリンク切れになる）。
 # オフラインで確かめられる範囲にとどめる（各パッケージの中身までは検査しない）
 deps_installed() {
   [[ -f "$ROOT_DIR/node_modules/.pnpm/lock.yaml" ]] || return 1
   (cd "$ROOT_DIR" && node -e '
     const fs = require("node:fs");
+    const path = require("node:path");
     const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
     const names = [...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.devDependencies ?? {})];
     const missing = names.filter((name) => !fs.existsSync("node_modules/" + name + "/package.json"));
     if (missing.length > 0) {
       console.error("見つからない依存: " + missing.join(" "));
+      process.exit(1);
+    }
+    const store = "node_modules/.pnpm";
+    const dirs = [path.join(store, "node_modules")];
+    for (const entry of fs.readdirSync(store, { withFileTypes: true })) {
+      if (entry.isDirectory() && entry.name !== "node_modules") dirs.push(path.join(store, entry.name, "node_modules"));
+    }
+    const children = (dir) =>
+      (fs.existsSync(dir) ? fs.readdirSync(dir) : [])
+        .filter((name) => !name.startsWith("."))
+        .flatMap((name) => (name.startsWith("@") ? children(path.join(dir, name)).map((sub) => path.join(name, sub)) : [name]));
+    const broken = [];
+    for (const dir of dirs) {
+      for (const name of children(dir)) {
+        if (!fs.existsSync(path.join(dir, name, "package.json"))) broken.push(path.join(dir, name));
+      }
+    }
+    if (broken.length > 0) {
+      console.error("仮想ストアに欠けた依存があります: " + broken.slice(0, 5).join(" ") + (broken.length > 5 ? " ほか " + (broken.length - 5) + " 件" : ""));
       process.exit(1);
     }
   ' 2>&1 | sed 's/^/[setup-dev-env]      /' >&2; exit "${PIPESTATUS[0]}")
