@@ -74,7 +74,9 @@ installed_node_bin() {
 install_node() {
   local shasums file version url tmp name
   log "Node.js ${NODE_MAJOR}.x の最新版を ${NODE_MIRROR} から取得します"
-  shasums="$(curl -fsSL --retry 3 "$NODE_MIRROR/latest-v${NODE_MAJOR}.x/SHASUMS256.txt")"
+  if ! shasums="$(curl -fsSL --retry 3 "$NODE_MIRROR/latest-v${NODE_MAJOR}.x/SHASUMS256.txt")"; then
+    fail "Node.js の版情報を取得できません。Codex ではセットアップ/メンテナンススクリプトとして実行し、失敗後は環境を再作成してください（docs/dev-environment.md §3.2）"
+  fi
   file="$(awk -v p="$NODE_PLATFORM" '$2 ~ "^node-v[0-9.]+-" p "\\.tar\\.gz$" { print $2 }' <<<"$shasums" | head -n 1)"
   [[ -n "$file" ]] || fail "SHASUMS256.txt に ${NODE_PLATFORM} の tar.gz がありません"
   version="${file#node-}"
@@ -82,7 +84,9 @@ install_node() {
   url="$NODE_MIRROR/$version/$file"
   tmp="$(mktemp -d)"
   TMP_DIRS+=("$tmp")
-  curl -fsSL --retry 3 -o "$tmp/$file" "$url"
+  if ! curl -fsSL --retry 3 -o "$tmp/$file" "$url"; then
+    fail "Node.js を取得できません: $url（ネットワーク設定と AICM_NODE_MIRROR を確認してください）"
+  fi
   (cd "$tmp" && awk -v f="$file" '$2 == f' <<<"$shasums" | sha256sum -c --quiet -) ||
     fail "Node.js の SHA-256 が一致しません: $url"
   name="${file%.tar.gz}"

@@ -68,7 +68,7 @@ bash scripts/setup-dev-env.sh --check  # 何も入れずに検査だけ行う
 
 ### 3.2 web 版 Codex
 
-Codex の環境設定（Environments）で次のように設定する。
+Codex の環境設定（Environments）で、このリポジトリに使う環境を開き、次の値を設定して保存する。セットアップ済みのキャッシュが残っている環境には設定変更が反映されないことがあるため、保存後は新しい環境を作成してタスクを開始する。
 
 | 項目 | 値 |
 |---|---|
@@ -78,8 +78,27 @@ Codex の環境設定（Environments）で次のように設定する。
 | エージェントのインターネットアクセス | オフのままでよい（必要なものはすべてセットアップで入れる。テストは実 API を呼ばない） |
 | 環境変数・シークレット | 不要（API キーは開発・テストで使わない。guardrails.md §5） |
 
+設定画面へ貼り付けるコマンドは、Setup script と Maintenance script のどちらも次の 1 行である。
+
+```bash
+bash scripts/setup-dev-env.sh
+```
+
+- Setup script は新しいコンテナを作成するとき、Maintenance script はキャッシュ済みコンテナを再利用するときに必要である。片方だけでは、タスクによってセットアップされない場合があるため、**両方に同じコマンドを設定する**。
+- セットアップ中に `nodejs.org`、`registry.npmjs.org`、`cdn.playwright.dev` と Ubuntu のパッケージリポジトリへアクセスできることが必要である。Codex のセットアップログで `scripts/setup-dev-env.sh` が終了コード 0 になったことを確認する。
 - セットアップスクリプトの `export` はエージェントのシェルに引き継がれないため、PATH は `~/.bashrc` / `~/.profile` 経由で反映する（§1）。
 - セットアップはインターネットに出られるため、Playwright の Chromium と依存ライブラリ（root で `apt-get` が使えるとき `playwright install-deps chromium`）も入る。
+- エージェント開始後はインターネットアクセスがオフなので、セットアップに失敗したセッション内で `bash scripts/setup-dev-env.sh` を再実行しても Node.js や依存は取得できない。セットアップログを確認して設定を直し、環境を作り直す。開始直後の `node --version` が `.node-version` と違う場合も、セットアップスクリプトが未設定または失敗している。
+
+新しいタスクの開始直後に、次を実行して設定が反映されたことを確認する。
+
+```bash
+node --version                              # v26.x
+pnpm --version                              # package.json の packageManager と同じ版
+bash scripts/setup-dev-env.sh --check       # Node.js・pnpm・依存・Chromium を検査
+pnpm check                                  # lint・型検査・単体テスト
+pnpm build:e2e && pnpm test:e2e             # E2E 用ビルド・E2E テスト
+```
 
 ## 4. 制約事項と環境差分
 
