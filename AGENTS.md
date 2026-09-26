@@ -26,7 +26,7 @@ AI コーディングエージェント（Claude Code, Codex, Copilot 等）向�
 
 ## 技術スタック（要約）
 
-WXT（Vite）/ TypeScript strict / React / Tailwind CSS v4 / react-markdown / @mozilla/readability / @anthropic-ai/sdk / openai / zod / Biome / Vitest / Playwright / pnpm / Node.js 24 LTS
+WXT（Vite）/ TypeScript strict / React / Tailwind CSS v4 / react-markdown / @mozilla/readability / @anthropic-ai/sdk / openai / zod / Biome / Vitest / Playwright / pnpm / Node.js 26
 
 ## コマンド
 
@@ -45,7 +45,7 @@ pnpm test:build       # build 後に実行。manifest の権限・CSP の固定�
 
 M2 で追加予定: `pnpm build:e2e`（モックプロバイダ入り E2E 用ビルド、`.output/e2e`。配布禁止）/ `pnpm test:e2e`（Playwright、実 API は呼ばない）。
 
-Node.js は `.node-version`（24）、pnpm は `package.json` の `packageManager`（12.x）に合わせる。pnpm の設定は `pnpm-workspace.yaml` に書く（pnpm 11 以降 `.npmrc` は認証・レジストリ以外を読まない）。
+Node.js は `.node-version`（26）、pnpm は `package.json` の `packageManager`（12.x）に合わせる。pnpm の設定は `pnpm-workspace.yaml` に書く（pnpm 11 以降 `.npmrc` は認証・レジストリ以外を読まない）。
 - 依存は `^` / `~` なしの固定バージョン（`saveExact: true`）。`pnpm add pkg@24` のように範囲で指定すると `^` が付くので、`pnpm add pkg@24.13.6` と完全な版を指定する。`tests/unit/package-json.test.ts` で検査している。
 - `minimumReleaseAge: 1440` により、公開から 24 時間未満の版は導入できない（サプライチェーン対策。緩めない）。
 
