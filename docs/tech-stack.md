@@ -1,6 +1,6 @@
 # 技術選定とアーキテクチャ
 
-> ステータス: **Draft v0.1**（M0 雛形まで実装済み）
+> ステータス: **Draft v0.1**（M1 最小縦串まで実装済み）
 > 関連: [機能仕様](./spec.md) / [ガードレール](./guardrails.md) / [AGENTS.md](../AGENTS.md)
 
 ## 1. 技術スタック一覧
@@ -96,6 +96,7 @@
 7. 書き込み直前に**クリック世代を確認**する（通常ジョブ・エラージョブを問わず、`job.<windowId>` へのすべての書き込みは同じ関数を通す）。background はクリック受付時（手順 1）にウィンドウごとの連番 `seq` を採番してメモリに保持し、書き込み時点でそのウィンドウの最新 `seq` と一致しない（後から別のクリックがあった）場合は破棄する。抽出の完了順が前後しても古いクリックが新しいジョブを上書きしない。ジョブにも `seq` を含め、サイドパネルは処理中/処理済みより小さい `seq` のジョブを無視する（Service Worker 再起動で連番がリセットされた場合に備え `createdAt` も比較）
 8. **手順 7〜8 は background 内の単一の直列キュー（Promise チェーン）で実行する**。複数ウィンドウのジョブが同時に完成しても、世代確認・容量確認・削除・書き込みが最新の保存状態に対して 1 件ずつ行われる。`set()` が失敗（容量超過等）した場合は `recent` を削除して 1 回だけ再試行し、それでも失敗したら小さなエラージョブを書き込む。
    ジョブ全体を `JSON.stringify` した UTF-8 バイト数が 2 MB を超えないこと、かつ `storage.session.getBytesInUse()` − 置き換え対象の既存 `job.<windowId>` のバイト数（`getBytesInUse(key)`）＋ 新ジョブのバイト数が 8 MB（`storage.session` の全体上限 10 MB に余裕を持たせる）以下であることを確認し（全体上限を超える場合はまず `recent` の古い項目から削除し、それでも超えるなら小さなエラージョブ「他のウィンドウの未処理ジョブが多すぎます」を書き込んで中止）（本文上限 500,000 文字なら通常は収まる。超えた場合はエラージョブを書き込んで中止）、`storage.session` の `job.<windowId>` にジョブ（`id`（UUID）, `windowId`, `seq`, `pageUrl`, `frameUrl`, `source`（本文・`originalLength`・`oversize` とその理由を含む）, `presetId`, `createdAt`）を書き込む
+   > M1 の実装範囲: 1 ジョブ 2 MB の検査と、`set()` 失敗時の小さなエラージョブの書き込みまで。`storage.session` 全体（8 MB）の検査と `recent` の削除は `recent`（最近の要約）と合わせて M2 で実装する。
 9. サイドパネルがジョブを受け取り（下記）、入力サイズ確認（`oversize` なら理由（本文 / メタデータ）とともに「先頭から上限まで送信 / キャンセル」を表示） → **送信直前に除外ドメインを再判定** → プロバイダ呼び出し → ストリーミング表示
 
 **除外判定は送信のたびに行う**: 初回送信・確認後の送信・再生成のいずれでも、プロバイダ呼び出しの直前にジョブの `pageUrl` / `frameUrl` を**その時点の**除外設定で再判定する。確認待ちの間に除外ドメインが追加された場合も送信しない。
@@ -126,12 +127,15 @@
 │   ├── lib/
 │   │   ├── context-menu.ts    # メニュー定義・クリック処理（sidePanel.open の呼び出し順を含む）
 │   │   ├── providers/         # types.ts, anthropic.ts, openai.ts, registry.ts
-│   │   ├── prompt/            # presets.ts, build.ts
-│   │   ├── extract/           # 注入関数から呼ぶ純粋関数（テスト対象）
+│   │   ├── prompt/            # presets.ts, build.ts, escape.ts, tokens.ts
+│   │   ├── extract/           # 注入スクリプトの本体（page.ts）と戻り値の検証（schema.ts）
+│   │   ├── job/               # ジョブの組み立て（create.ts）とサイドパネルでの受信判定（receive.ts）
 │   │   ├── storage/           # schema.ts, settings.ts, secrets.ts, session.ts
 │   │   ├── domain/            # 除外ドメイン判定など
+│   │   ├── safe-url.ts        # AI 出力内リンクの許可判定
 │   │   └── i18n.ts
-│   ├── components/            # 共有 React コンポーネント
+│   ├── components/            # 共有 React コンポーネント（MarkdownView.tsx など）
+│   ├── styles/                # サイドパネル・設定画面で共有する CSS
 │   └── public/_locales/{ja,en}/messages.json
 ├── tests/
 │   ├── unit/                  # src 外の単体テスト（ロケール整合など）。src/lib 内は *.test.ts を同じ階層に置く
@@ -168,17 +172,18 @@ export interface Provider {
 ```
 
 - UI はこのインターフェイスのみに依存し、SDK 型を UI 層へ漏らさない。
-- エラーは各アダプタで共通エラー型（`AuthError` / `RateLimitError` / `OverloadedError` / `NetworkError` / `BadRequestError`）へ変換する。SDK の型付き例外クラスで分岐し、メッセージ文字列でマッチしない。
+- エラーは各アダプタで共通エラー型 `ProviderError`（`kind`: `auth` / `rate_limit` / `overloaded` / `network` / `bad_request` / `aborted` / `unknown`）へ変換する。SDK の型付き例外クラスで分岐し、メッセージ文字列でマッチしない。`ProviderError` のメッセージは種別と HTTP ステータスのみとし、元の例外（レスポンス詳細）は保持しない。
 - モデル依存パラメータ（`effort`, `thinking` 等）は**既知モデルの許可リスト**でのみ付与し、未知モデルには送らない（400 回避）。
 
 ### 4.5 プロバイダ別の実装メモ
 
 **Anthropic**
-- `new Anthropic({ apiKey, dangerouslyAllowBrowser: true })` — BYOK でユーザー自身のキーを自分のブラウザで使う用途のため許容（→ [ガードレール §1](./guardrails.md#1-秘密情報api-キー)）。
-- `client.messages.stream({...}, { signal })` でストリーミング。`text_delta` を UI へ流し、`finalMessage()` で `stop_reason` / `usage` を得る。
+- `new Anthropic({ apiKey, dangerouslyAllowBrowser: true, baseURL: "https://api.anthropic.com", logLevel: "off" })` — BYOK でユーザー自身のキーを自分のブラウザで使う用途のため許容（→ [ガードレール §1](./guardrails.md#1-秘密情報api-キー)）。`baseURL` は環境変数等に左右されないよう公式ホストに固定する。
+- サーバー側フォールバックがベータ機能のため `client.beta.messages.stream({...}, { signal })` でストリーミングする。`text_delta` を UI へ流し、`finalMessage()` で `stop_reason` / `usage` を得る。拒否後にフォールバックモデルが続きを書く場合も、テキストは同じストリームに続けて届く。
 - 既定モデル `claude-opus-5`。設定で `claude-sonnet-5` / `claude-haiku-4-5` 等へ変更可（一覧は `client.models.list()`）。
 - `stop_reason === "refusal"` を必ず処理する。`claude-opus-5` では server-side fallback（beta `server-side-fallback-2026-07-01` + `fallbacks: "default"`）を有効にする。
-- 要約用途のため `output_config.effort` は既定 `medium`（対応モデルのみ付与、設定で変更可）。
+- 要約用途のため `output_config.effort` は既定 `medium`（対応モデルのみ付与。M1 の許可リストは `claude-opus-5` / `claude-sonnet-5`。設定での変更は M2）。
+- `thinking` は指定しない（`claude-opus-5` は省略時に adaptive thinking で動く。思考の表示は既定で省略されるため、テキストが届くまで少し間が空くことがある）。
 - 実装時はパラメータ名・ヘッダを公式 SDK ドキュメントで確認すること（推測で書かない）。
 
 **OpenAI**

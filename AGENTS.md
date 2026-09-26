@@ -12,7 +12,7 @@ AI コーディングエージェント（Claude Code, Codex, Copilot 等）向�
 - 対応プロバイダは Anthropic / OpenAI の公式 API（Gemini は Phase 2 で追加予定。MVP では実装しない）。**ローカル LLM・任意エンドポイントは非対応**、Web UI（chatgpt.com 等）への受け渡しも実装しない。
 - **Chrome ウェブストアでは公開しない**（手動インストールで個人利用）。
 
-**現在のフェーズ: M0（雛形）完了・M1（最小縦串）未着手。** 右クリックメニューの登録と空のサイドパネルを開くところまで実装済み。E2E（Playwright）は M2 で追加する。
+**現在のフェーズ: M1（最小縦串）実装済み・M2（MVP）未着手。** 右クリック → ページ本文を抽出 → Anthropic にストリーミングで要約 → サイドパネルに表示、までが動く。設定画面は API キーの保存・削除のみ（M1 の暫定範囲）。選択テキストの要約・OpenAI・除外ドメイン・設定項目の編集・モデルのコンテキスト長判定・E2E（Playwright）は M2 で追加する。
 
 ## 必読ドキュメント
 
@@ -51,16 +51,18 @@ Node.js は `.node-version`（24）、pnpm は `package.json` の `packageManage
 
 ## アーキテクチャの要点
 
-- `wxt.config.ts` — manifest 定義。**権限はここだけで管理**し、変更したら `tests/build/manifest.test.ts` の期待値も更新する（人間の承認必須）。権限は §2 の一覧のうち、使うマイルストーンで必要になったものだけを追加する（M0 時点: `contextMenus`, `sidePanel`）。自動インポートは無効（`imports: false`）なので `browser` 等は明示的に import する。
-- `src/entrypoints/background.ts` — コンテキストメニュー、`sidePanel.open()`、除外判定、コンテンツ取得、`storage.session` へジョブ書き込み。**短命な処理のみ。**
-- `src/entrypoints/extract.ts` — `scripting.executeScript` で必要時のみ注入する読み取り専用スクリプト。
-- `src/entrypoints/sidepanel/` — ジョブ受信、AI 呼び出し（ストリーミング）、結果表示。**API 呼び出しはここで行う**（Service Worker は停止しうるため）。
-- `src/entrypoints/options/` — API キー・設定。
+- `wxt.config.ts` — manifest 定義。**権限はここだけで管理**し、変更したら `tests/build/manifest.test.ts` の期待値も更新する（人間の承認必須）。権限は §2 の一覧のうち、使うマイルストーンで必要になったものだけを追加する（M1 時点: `contextMenus`, `sidePanel`, `activeTab`, `scripting`, `storage` と host `https://api.anthropic.com/*`）。自動インポートは無効（`imports: false`）なので `browser` 等は明示的に import する。
+- `src/entrypoints/background.ts` — コンテキストメニュー、`sidePanel.open()`、除外判定（M2）、コンテンツ取得、`storage.session` へジョブ書き込み。**短命な処理のみ。**
+- `src/entrypoints/extract.ts` — `scripting.executeScript` で必要時のみ注入する読み取り専用スクリプト。main の戻り値が `executeScript` の結果になる。中身は `src/lib/extract/page.ts`（注入スクリプトを小さく保つため zod 等は import しない。戻り値の検証は `src/lib/extract/schema.ts` で background 側が行う）。
+- `src/entrypoints/sidepanel/` — ジョブ受信、AI 呼び出し（ストリーミング）、結果表示。**API 呼び出しはここで行う**（Service Worker は停止しうるため）。受信・送信の状態管理は `use-summary.ts`。
+- `src/entrypoints/options/` — API キー・設定（M1 は API キーのみ）。
 - `src/lib/context-menu.ts` — メニュー定義とクリック処理（`sidePanel.open()` を await 前に呼ぶ規約をここでテストしている）。
-- `src/lib/i18n.ts` — `t(key)`。キーは `ja/messages.json` から型付け。ロケール間のキー一致は `tests/unit/locales.test.ts` で検査。
+- `src/lib/i18n.ts` — `t(key, substitutions)`。キーは `ja/messages.json` から型付け。置換は messages.json の `placeholders` で定義する。ロケール間のキー一致は `tests/unit/locales.test.ts` で検査。
 - `src/lib/providers/` — `Provider` インターフェイス（`listModels` / `verifyKey` / `stream`）とプロバイダ別アダプタ。UI は SDK 型に直接依存しない。
-- `src/lib/prompt/` — プロンプト生成（純粋関数・スナップショットテスト対象）。
-- `src/lib/storage/` — zod スキーマ付きのストレージアクセス。直接 `chrome.storage` を触らずここを経由する。
+- `src/lib/prompt/` — プロンプト生成（純粋関数・スナップショットテスト対象）、XML エスケープとエスケープ後の文字数計算、トークン概算。
+- `src/lib/job/` — ジョブの組み立て（上限超過・メタデータ短縮の判定、送信用 URL）と、サイドパネルでの受信判定（重複・古い・期限切れ）。純粋関数。
+- `src/lib/storage/` — zod スキーマ付きのストレージアクセス（`schema.ts` / `settings.ts` / `secrets.ts` / `session.ts`）。直接 `chrome.storage` を触らずここを経由する。`job.<windowId>` への書き込みは `JobWriter`（世代確認・直列キュー）を必ず通す。
+- `src/components/MarkdownView.tsx` — AI 出力の安全な描画（生 HTML 無効・http(s) のリンクのみ・画像はリンクに置換）。
 
 詳細は [docs/tech-stack.md §4](./docs/tech-stack.md#4-アーキテクチャ)。
 

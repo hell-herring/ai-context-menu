@@ -17,5 +17,192 @@
   },
   "sidePanelEmpty": {
     "message": "Right-click on a page and choose a summary from \"AI Context Menu\"."
+  },
+  "sidePanelWaiting": {
+    "message": "Reading the page…"
+  },
+  "sourcePage": {
+    "message": "Page content"
+  },
+  "sourceSelection": {
+    "message": "Selected text"
+  },
+  "sourceChars": {
+    "message": "$COUNT$ characters",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "sourceUntitled": {
+    "message": "(Untitled)"
+  },
+  "sourceTruncatedContent": {
+    "message": "Content truncated to the $LIMIT$-character limit",
+    "placeholders": {
+      "limit": {
+        "content": "$1"
+      }
+    }
+  },
+  "sourceTruncatedMetadata": {
+    "message": "Overlong title or URL shortened"
+  },
+  "sourceUrlNotSent": {
+    "message": "URL is not sent (not http/https)"
+  },
+  "oversizeTitle": {
+    "message": "The content exceeds the limit"
+  },
+  "oversizeContent": {
+    "message": "Content: $ORIGINAL$ characters (limit: $LIMIT$). Sending up to the limit is about $TOKENS$ tokens.",
+    "placeholders": {
+      "original": {
+        "content": "$1"
+      },
+      "limit": {
+        "content": "$2"
+      },
+      "tokens": {
+        "content": "$3"
+      }
+    }
+  },
+  "oversizeMetadata": {
+    "message": "The title or URL is too long and will be shortened."
+  },
+  "buttonSendTruncated": {
+    "message": "Send up to the limit"
+  },
+  "buttonCancel": {
+    "message": "Cancel"
+  },
+  "buttonStop": {
+    "message": "Stop"
+  },
+  "buttonRegenerate": {
+    "message": "Regenerate"
+  },
+  "buttonCopy": {
+    "message": "Copy"
+  },
+  "buttonOpenOptions": {
+    "message": "Open settings"
+  },
+  "copied": {
+    "message": "Copied"
+  },
+  "copyFailed": {
+    "message": "Could not copy"
+  },
+  "statusStreaming": {
+    "message": "Generating…"
+  },
+  "statusDone": {
+    "message": "Done"
+  },
+  "statusStopped": {
+    "message": "Stopped"
+  },
+  "statusCancelled": {
+    "message": "Cancelled"
+  },
+  "statusMaxTokens": {
+    "message": "Stopped early because the output limit was reached"
+  },
+  "statusRefusal": {
+    "message": "The model declined to respond"
+  },
+  "usageTokens": {
+    "message": "Input $INPUT$ / output $OUTPUT$ tokens",
+    "placeholders": {
+      "input": {
+        "content": "$1"
+      },
+      "output": {
+        "content": "$2"
+      }
+    }
+  },
+  "errorApiKeyMissing": {
+    "message": "Please set your API key"
+  },
+  "errorAuth": {
+    "message": "The API key is invalid or lacks permission"
+  },
+  "errorRateLimit": {
+    "message": "Rate limit reached. Please wait and try again"
+  },
+  "errorOverloaded": {
+    "message": "The provider returned a temporary error"
+  },
+  "errorNetwork": {
+    "message": "Could not connect"
+  },
+  "errorBadRequest": {
+    "message": "The request was rejected"
+  },
+  "errorUnknown": {
+    "message": "An error occurred"
+  },
+  "errorEditable": {
+    "message": "Text inside input fields cannot be summarized"
+  },
+  "errorSelectionUnsupported": {
+    "message": "Summarizing selected text is not supported yet. Clear the selection and right-click on the page"
+  },
+  "errorUnreadablePage": {
+    "message": "This page cannot be read by the extension"
+  },
+  "errorEmptyContent": {
+    "message": "There is no text to summarize"
+  },
+  "errorTooLarge": {
+    "message": "The page is too large to process"
+  },
+  "optionsTitle": {
+    "message": "AI Context Menu settings"
+  },
+  "optionsAnthropicHeading": {
+    "message": "Anthropic (Claude)"
+  },
+  "optionsApiKeyLabel": {
+    "message": "API key"
+  },
+  "optionsKeyStored": {
+    "message": "Saved: $KEY$",
+    "placeholders": {
+      "key": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsKeyNotStored": {
+    "message": "Not set"
+  },
+  "optionsSave": {
+    "message": "Save"
+  },
+  "optionsDelete": {
+    "message": "Delete"
+  },
+  "optionsSaved": {
+    "message": "Saved"
+  },
+  "optionsDeleted": {
+    "message": "Deleted"
+  },
+  "optionsInvalidKey": {
+    "message": "The API key format is invalid"
+  },
+  "optionsSaveFailed": {
+    "message": "Failed to save"
+  },
+  "optionsStorageNote": {
+    "message": "The API key is stored unencrypted in this browser (chrome.storage.local) and is sent only to the Anthropic API. We recommend using a key with a spending limit."
+  },
+  "optionsDataNote": {
+    "message": "When you summarize, the page title, URL (without query or fragment) and content are sent to Anthropic. Data is sent only when you click a menu item or a button such as Regenerate."
   }
 }

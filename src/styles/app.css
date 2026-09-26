@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  @apply bg-white text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100;
+}
+
+/* AI 出力の Markdown（react-markdown が生成する要素）の最小限のスタイル */
+.markdown {
+  @apply flex flex-col gap-2 text-sm leading-relaxed break-words;
+
+  & h1,
+  & h2,
+  & h3,
+  & h4 {
+    @apply mt-2 font-semibold;
+  }
+  & h1 {
+    @apply text-lg;
+  }
+  & h2 {
+    @apply text-base;
+  }
+  & ul {
+    @apply list-disc pl-5;
+  }
+  & ol {
+    @apply list-decimal pl-5;
+  }
+  & li + li {
+    @apply mt-1;
+  }
+  & a {
+    @apply text-blue-700 underline dark:text-blue-400;
+  }
+  & :not(pre) > code {
+    @apply rounded bg-neutral-100 px-1 font-mono text-[0.85em] dark:bg-neutral-800;
+  }
+  & pre {
+    @apply overflow-x-auto rounded bg-neutral-100 p-2 dark:bg-neutral-800;
+  }
+  & blockquote {
+    @apply border-neutral-300 border-l-4 pl-3 text-neutral-700 dark:border-neutral-600 dark:text-neutral-300;
+  }
+  & table {
+    @apply w-full border-collapse text-xs;
+  }
+  & th,
+  & td {
+    @apply border border-neutral-300 px-2 py-1 text-left dark:border-neutral-600;
+  }
+}

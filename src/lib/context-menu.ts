@@ -53,7 +53,7 @@ export interface MenuClick {
 export interface MenuClickDeps {
   /** `sidePanel.open()`。ユーザー操作のコンテキスト内で同期的に呼ばれる */
   openSidePanel(windowId: number): Promise<void>;
-  /** サイドパネルが開けた後の処理（M1 以降: 除外判定・抽出・ジョブ書き込み） */
+  /** サイドパネルが開けた後の処理（除外判定・抽出・ジョブ書き込み） */
   onSidePanelOpened(click: { presetId: PresetId; windowId: number }): Promise<void>;
   /** サイドパネルを開けなかった場合。以降の処理は行わない */
   onSidePanelOpenFailed(error: unknown): void;
