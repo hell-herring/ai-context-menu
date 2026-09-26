@@ -52,11 +52,12 @@
 | ストア | キー | 内容 | 理由 |
 |---|---|---|---|
 | `storage.local` | `secrets.<provider>.apiKey` | API キー | **同期させない**（Google アカウント経由で他端末に複製しない）。拡張のみアクセス可 |
-| `storage.sync` | `settings` | 設定（プロバイダ・モデル・言語・上限・除外ドメイン・プリセット） | 端末間で同期して良い非機密情報のみ |
-| `storage.session` | `pendingJob`, `recent` | 要約ジョブ（抽出済みテキスト）と直近結果 | メモリ上のみ・ブラウザ終了で消える。既定でコンテンツスクリプトからアクセス不可 |
+| `storage.sync` | `settings.core` / `settings.excludedDomains` / `settings.presets` | 設定（プロバイダ・モデル・言語・上限）／除外ドメイン／ユーザー定義プリセット | 端末間で同期して良い非機密情報のみ。増えうる一覧は別キーに分ける（下記） |
+| `storage.session` | `job.<windowId>`, `recent` | 要約ジョブ（抽出済みテキスト）と直近結果 | メモリ上のみ・ブラウザ終了で消える。既定でコンテンツスクリプトからアクセス不可 |
 
 - すべてのストレージ読み書きは `lib/storage/` 経由とし、zod スキーマで検証する。スキーマにバージョンを持たせ、マイグレーション関数を用意する。
 - `storage.local` は暗号化されない点をオンボーディングで明示する（キーは使用量上限を設定したものを推奨）。
+- `storage.sync` には 1 項目あたり・全体の容量上限（`QUOTA_BYTES_PER_ITEM` / `QUOTA_BYTES`）がある。増えうる一覧は別キーに分け、件数・文字数の上限を zod スキーマで強制する（例: 除外ドメイン最大 200 件、プリセット最大 20 件・指示文 2,000 文字）。書き込み失敗（容量超過）は握りつぶさず設定画面に表示する。
 
 ## 4. アーキテクチャ
 
@@ -69,7 +70,7 @@
 └──────────────▲──────────────────────────────┘
                │ scripting.executeScript (activeTab)
 ┌──────────────┴──────────────┐   storage.session   ┌─────────────────────────────┐
-│ background (Service Worker) │ ── pendingJob ────▶ │ sidepanel (拡張ページ, React) │
+│ background (Service Worker) │ ── job.<windowId> ▶ │ sidepanel (拡張ページ, React) │
 │  - contextMenus 登録/クリック │                     │  - ジョブ受信・入力確認        │
 │  - sidePanel.open()          │                     │  - providers/* で API 呼び出し │
 │  - 除外判定・コンテンツ取得     │                     │  - ストリーミング表示・停止    │
@@ -86,11 +87,18 @@
 ### 4.2 処理シーケンス
 
 1. `contextMenus.onClicked`（background）
-2. **最初に** `chrome.sidePanel.open({ tabId })` を呼ぶ（ユーザー操作のコンテキストを失う前に。`await` を挟まない）
-3. 除外ドメイン判定 → 該当すればエラージョブを書き込んで終了
-4. `scripting.executeScript` で選択テキスト or 本文を取得
-5. `storage.session.pendingJob` にジョブ（`id`, `source`, `presetId`, `createdAt`）を書き込む
-6. サイドパネルが `storage.onChanged`（起動直後は `get`）でジョブを受け取り、入力サイズ確認 → プロバイダ呼び出し → ストリーミング表示
+2. **最初に** `const opening = chrome.sidePanel.open({ windowId: tab.windowId })` を呼ぶ（ユーザー操作のコンテキストを失う前に。ここより前に `await` を挟まない）
+3. `await opening` し、**失敗したら以降を中止する**（抽出もジョブ書き込みもしない）。パネルが開けないままバックグラウンドで送信が進むことを防ぐ
+4. 除外ドメイン判定（`info.pageUrl` と `info.frameUrl` の両方）・`info.editable` 判定 → 該当すればエラージョブを書き込んで終了
+5. `scripting.executeScript` で選択テキスト or 本文を取得
+6. `storage.session` の `job.<windowId>` にジョブ（`id`（UUID）, `windowId`, `source`, `presetId`, `createdAt`）を書き込む
+7. サイドパネルがジョブを受け取り（下記）、入力サイズ確認 → プロバイダ呼び出し → ストリーミング表示
+
+**ジョブは 1 回だけ消費する**（二重送信・二重課金の防止）:
+- サイドパネルはウィンドウ単位（`windowId` 指定で開く）とし、起動時に `chrome.windows.getCurrent()` で自分の `windowId` を得て、`job.<自分の windowId>` だけを読む。
+- 受け取ったら**プロバイダ呼び出しの前に** `storage.session.remove()` で削除する。パネルを開き直しても同じジョブを再送しない。
+- 処理済みジョブ ID をメモリに保持し、同じ ID は無視する（`onChanged` と起動時 `get` の両方で受け取った場合の重複対策）。
+- `createdAt` から 60 秒以上経過したジョブは送信せず破棄する（取り残されたジョブの誤送信防止）。
 
 ### 4.3 ディレクトリ構成（予定）
 
@@ -178,13 +186,15 @@ system:
 
 user:
   <document title="{title}" url="{url}" source="{selection|page}">
-  {content}   ← `</document>` 等のタグ文字列はエスケープ済み
+  {content}
   </document>
 
   {preset.instruction}
 ```
 
-- プロンプト生成は `lib/prompt/build.ts` の純粋関数に集約し、スナップショットテストで固定する。
+- **ページ由来の値はすべてエスケープする**: `title` / `url`（属性値）は `& < > " '` を、`content` は `& < >` を XML 実体参照に置換する。タイトル等に `"></document>` を仕込まれても区切りを抜けられないようにする。`source` は列挙値のみ受け付ける。
+- `url` はプライバシー保護のため `origin + pathname` のみ（[spec §3.2](./spec.md#32-コンテンツ取得)）。
+- プロンプト生成は `lib/prompt/build.ts` の純粋関数に集約し、スナップショットテストで固定する。区切りを破る入力（`"></document>` を含むタイトル・本文など）のテストケースを必ず含める。
 
 ## 5. 品質ゲート（予定コマンド）
 
@@ -211,7 +221,9 @@ CI（GitHub Actions）は `pnpm install --frozen-lockfile` → `check` → `buil
 | 単体 | プロンプト生成、除外ドメイン判定、入力サイズ制御、設定スキーマ/マイグレーション | Vitest |
 | 単体 | 本文抽出 | `tests/fixtures/*.html` を happy-dom に読み込み Readability 結果を検証 |
 | 単体 | プロバイダアダプタ | SDK に `fetch` を差し替えてストリーム応答・各種エラーをモック |
-| 構成 | manifest の権限 | ビルド後の `manifest.json` の `permissions` / `host_permissions` をスナップショット比較 |
+| 構成 | manifest の権限・CSP | ビルド後の `manifest.json` の `permissions` / `host_permissions` / `optional_host_permissions` / `content_security_policy` / `content_scripts` をスナップショット比較 |
+| 構成 | テスト専用コードの混入 | 本番ビルド出力（`.output/chrome-mv3/**`）にモックプロバイダのマーカー文字列（例: `__AICM_TEST_ONLY__`）が含まれないことを検査 |
 | E2E | メニュー → サイドパネル → 結果表示 | Playwright + テスト専用モックプロバイダ（**テストビルドのみに含める**） |
 
 - **CI・テストで実 API を呼ばない。** 実 API 疎通は手動確認のみ。
+- テスト専用コード（モックプロバイダ等）は `src/testing/` に置き、マーカー文字列 `__AICM_TEST_ONLY__` を含める。読み込みは `import.meta.env.MODE === "e2e"` の分岐内の動的 import に限定し、本番ビルドではツリーシェイクで到達不能にする。上記の出力検査でこれを保証する（manifest スナップショットだけでは manifest を変えないモジュールの混入を検出できないため）。

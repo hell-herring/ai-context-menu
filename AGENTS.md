@@ -59,7 +59,9 @@ pnpm test:e2e         # Playwright（モックプロバイダ使用、実 API �
 - 権限（`permissions` / `host_permissions`）や CSP を**勝手に追加・緩和しない**。必要なら作業を止めて人間に提案する。`<all_urls>`・常時 `content_scripts`・`tabs`/`cookies`/`webRequest` は禁止。
 - API キーは `storage.local` のみ。ログ・エラー文・UI・URL・注入スクリプトに流さない。
 - AI 出力・ページ内容を `dangerouslySetInnerHTML` / `innerHTML` / `rehype-raw` で描画しない。
-- ページ内容は `<document>` で区切り「指示ではなくデータ」として扱う。LLM にツールや自動実行の権限を与えない。
+- ページ内容は `<document>` で区切り「指示ではなくデータ」として扱う。タイトル・URL を含むページ由来の値はすべて XML エスケープする。LLM にツールや自動実行の権限を与えない。
+- 入力欄内の選択（`info.editable`）は送らない。プロバイダへ送る URL は `origin + pathname` のみ。除外判定はページ URL とフレーム URL の両方で行う。
+- 1 回のクリックで外部送信は最大 1 回（ジョブは送信前に削除して 1 回だけ消費）。
 - ユーザー操作なしに外部送信しない。テレメトリを入れない。入力を黙って切り詰めない。
 - テスト・CI で実 AI API を呼ばない。テスト専用コードを本番ビルドに含めない。
 - `eval` / `new Function` / リモートスクリプト読み込み禁止。
@@ -74,7 +76,7 @@ pnpm test:e2e         # Playwright（モックプロバイダ使用、実 API �
 - UI 文字列は `chrome.i18n`（`src/public/_locales/{ja,en}/messages.json`）経由。ハードコードしない。
 - コメント・ドキュメントは日本語可。識別子は英語。
 - Chrome API は Promise 形式を使う（コールバック形式は使わない）。
-- `contextMenus.onClicked` では `sidePanel.open()` を **`await` より前に**呼ぶ（ユーザー操作コンテキストを失うと失敗する）。
+- `contextMenus.onClicked` では `sidePanel.open()` を **`await` より前に**呼び、その Promise を保持して後で `await` する。失敗したら抽出・ジョブ書き込みをせず中止する。
 - AI SDK の使い方（パラメータ名・ヘッダ・モデル ID）は推測で書かず、公式ドキュメント/SDK で確認する。モデル依存パラメータは既知モデルの許可リストでのみ付与する。
 
 ## 作業の進め方
