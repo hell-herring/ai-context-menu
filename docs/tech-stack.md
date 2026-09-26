@@ -42,7 +42,7 @@
 | `https://api.openai.com/*` | OpenAI API |
 
 - **`<all_urls>` / `tabs` / `webRequest` / `cookies` / `history` は要求しない。** コンテンツスクリプトの常時注入（`content_scripts` 宣言）もしない。
-- 将来のカスタムエンドポイント（Ollama 等）は `optional_host_permissions` で、ユーザー操作時に `permissions.request()` する。
+- ローカル LLM・任意のエンドポイントには対応しない（[spec D-4](./spec.md#61-決定事項)）。SDK の `baseURL` はユーザー設定にせず、各社公式ホスト固定とする。
 - 権限一覧はテストでスナップショット固定する（→ [ガードレール §5](./guardrails.md#5-開発プロセスのガードレール)）。
 - `minimum_chrome_version: "116"`。
 
@@ -189,7 +189,7 @@ user:
 |---|---|
 | `pnpm dev` | WXT 開発サーバー（Chrome を起動し拡張を読み込み） |
 | `pnpm build` | 本番ビルド（`.output/chrome-mv3`） |
-| `pnpm zip` | ストア提出用 zip |
+| `pnpm zip` | 配布用 zip（手動インストール用。ストアには提出しない） |
 | `pnpm lint` | `biome ci .` |
 | `pnpm format` | `biome format --write .` |
 | `pnpm typecheck` | `wxt prepare && tsc --noEmit` |
