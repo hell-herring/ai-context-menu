@@ -51,3 +51,18 @@ export async function removeApiKey(provider: SecretProvider): Promise<void> {
 export function maskApiKey(apiKey: string): string {
   return `••••${apiKey.slice(-4)}`;
 }
+
+/**
+ * API キーの保存・削除を監視する。解除関数を返す。
+ * キーの値は通知しない（必要な側が getApiKey で読む）
+ */
+export function watchApiKeys(onChange: () => void): () => void {
+  const keys = new Set(PROVIDER_IDS.map(apiKeyStorageKey));
+  const listener = (changes: Record<string, unknown>) => {
+    if (Object.keys(changes).some((key) => keys.has(key))) {
+      onChange();
+    }
+  };
+  browser.storage.local.onChanged.addListener(listener);
+  return () => browser.storage.local.onChanged.removeListener(listener);
+}

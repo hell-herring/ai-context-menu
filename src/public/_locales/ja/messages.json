@@ -439,5 +439,39 @@
         "content": "$1"
       }
     }
+  },
+  "pickerProvider": {
+    "message": "AI"
+  },
+  "pickerModel": {
+    "message": "モデル"
+  },
+  "pickerPreset": {
+    "message": "プリセット"
+  },
+  "pickerPending": {
+    "message": "再生成すると、選んだ AI・モデル・プリセットで送信します（設定は変わりません）"
+  },
+  "pickerOverflow": {
+    "message": "選んだモデル（$MODEL$）の入力上限に収まりません（推定 $TOKENS$ トークン / 使える量 $BUDGET$ トークン）。再生成すると、収まる長さまで送るかを確認します",
+    "placeholders": {
+      "model": {
+        "content": "$1"
+      },
+      "tokens": {
+        "content": "$2"
+      },
+      "budget": {
+        "content": "$3"
+      }
+    }
+  },
+  "pickerTooLong": {
+    "message": "選んだモデル（$MODEL$）では、本文を空にしても入力上限に収まらないため送信できません",
+    "placeholders": {
+      "model": {
+        "content": "$1"
+      }
+    }
   }
 }

@@ -3,11 +3,25 @@ import { browser } from "wxt/browser";
 import { MarkdownView } from "../../components/MarkdownView";
 import { type MessageKey, t } from "../../lib/i18n";
 import type { ModelOverflow } from "../../lib/job/request";
+import { modelChoices, providerChoices, type Target } from "../../lib/job/target";
+import {
+  isPresetId,
+  PRESET_IDS,
+  PRESET_MENU_TITLE_KEYS,
+  type PresetId,
+} from "../../lib/prompt/presets";
 import { estimateTokens } from "../../lib/prompt/tokens";
 import { PROVIDER_ERROR_MESSAGES } from "../../lib/providers/error-messages";
 import { PROVIDERS } from "../../lib/providers/registry";
+import { PROVIDER_IDS, type ProviderId } from "../../lib/providers/types";
 import type { ContentJob, JobErrorCode } from "../../lib/storage/schema";
-import { type PanelState, type Phase, useSummary } from "./use-summary";
+import {
+  type ModelCheck,
+  type PanelEnv,
+  type PanelState,
+  type Phase,
+  useSummary,
+} from "./use-summary";
 
 const JOB_ERROR_MESSAGES = {
   editable: "errorEditable",
@@ -29,12 +43,35 @@ function formatNumber(value: number): string {
   return numberFormat.format(value);
 }
 
+type SummaryState = Extract<PanelState, { kind: "summary" }>;
+
 export function App() {
-  const { state, confirm, cancel, stop, regenerate } = useSummary();
+  const {
+    state,
+    env,
+    selected,
+    selectProvider,
+    selectModel,
+    selectPreset,
+    confirm,
+    cancel,
+    stop,
+    regenerate,
+  } = useSummary();
 
   return (
     <main className="flex min-h-screen flex-col gap-3 p-4">
-      <Header state={state} />
+      <Header />
+      {state.kind === "summary" && env && (
+        <TargetPicker
+          state={state}
+          env={env}
+          selected={selected}
+          onProvider={selectProvider}
+          onModel={selectModel}
+          onPreset={selectPreset}
+        />
+      )}
       <Body state={state} onConfirm={confirm} onCancel={cancel} />
       {state.kind === "summary" && (
         <Actions state={state} onStop={stop} onRegenerate={regenerate} />
@@ -43,17 +80,137 @@ export function App() {
   );
 }
 
-function Header({ state }: { state: PanelState }) {
-  const target = state.kind === "summary" ? state.target : undefined;
+function Header() {
   return (
-    <header className="flex items-baseline justify-between gap-2">
+    <header className="flex items-center justify-between gap-2">
       <h1 className="font-semibold text-base">{t("extName")}</h1>
-      {target && (
-        <span className="truncate text-neutral-600 text-xs dark:text-neutral-400">
-          {PROVIDERS[target.provider].displayName} · {target.model}
-        </span>
-      )}
+      <button
+        type="button"
+        onClick={() => void browser.runtime.openOptionsPage()}
+        aria-label={t("buttonOpenOptions")}
+        title={t("buttonOpenOptions")}
+        className="rounded-md px-2 py-1 text-neutral-600 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-neutral-400 dark:hover:bg-neutral-800"
+      >
+        <span aria-hidden="true">⚙</span>
+      </button>
     </header>
+  );
+}
+
+const SELECT =
+  "min-w-0 rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm disabled:opacity-60 dark:border-neutral-600 dark:bg-neutral-900";
+
+/**
+ * 送信先（プロバイダ・モデル）とプリセットの切り替え（docs/spec.md §3.4）。
+ * 切り替えただけでは送信せず、再生成（確認中なら送信）で反映する。このジョブだけに効かせ、設定は変えない
+ */
+function TargetPicker({
+  state,
+  env,
+  selected,
+  onProvider,
+  onModel,
+  onPreset,
+}: {
+  state: SummaryState;
+  env: PanelEnv;
+  selected: Target | undefined;
+  onProvider: (provider: ProviderId) => void;
+  onModel: (model: string) => void;
+  onPreset: (presetId: PresetId) => void;
+}) {
+  const { phase, sent, presetId } = state;
+  // 送信中は、表示と送信中の内容が食い違わないよう切り替えさせない。
+  // キャンセルした後は送信（再生成）できないため切り替えても意味がない
+  const disabled =
+    phase.kind === "preparing" || phase.kind === "streaming" || phase.kind === "cancelled";
+  const providers = providerChoices(env.keys, selected?.provider);
+  const models = selected ? modelChoices(env.settings, selected.provider) : [];
+  // 送った内容と選択が違えば、再生成で反映されることを伝える
+  const changed =
+    sent !== undefined &&
+    (sent.provider !== selected?.provider ||
+      sent.model !== selected?.model ||
+      sent.presetId !== presetId);
+  const showPending = changed && phase.kind !== "confirm" && !disabled;
+  return (
+    <section className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap gap-2">
+        {selected && (
+          <>
+            <select
+              aria-label={t("pickerProvider")}
+              value={selected.provider}
+              disabled={disabled}
+              onChange={(event) => {
+                const provider = PROVIDER_IDS.find((id) => id === event.target.value);
+                if (provider) {
+                  onProvider(provider);
+                }
+              }}
+              className={SELECT}
+            >
+              {providers.map((provider) => (
+                <option key={provider} value={provider}>
+                  {PROVIDERS[provider].displayName}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label={t("pickerModel")}
+              value={selected.model}
+              disabled={disabled}
+              onChange={(event) => onModel(event.target.value)}
+              className={`${SELECT} max-w-full font-mono`}
+            >
+              {/* 選んだ後に設定のモデルが変わっても、選択中のモデルは選択肢に残す */}
+              {[...new Set([selected.model, ...models])].map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
+        <select
+          aria-label={t("pickerPreset")}
+          value={presetId}
+          disabled={disabled}
+          onChange={(event) => {
+            if (isPresetId(event.target.value)) {
+              onPreset(event.target.value);
+            }
+          }}
+          className={SELECT}
+        >
+          {PRESET_IDS.map((id) => (
+            <option key={id} value={id}>
+              {t(PRESET_MENU_TITLE_KEYS[id])}
+            </option>
+          ))}
+        </select>
+      </div>
+      {phase.kind !== "confirm" && state.switchCheck && <SwitchWarning check={state.switchCheck} />}
+      {showPending && (
+        <p className="text-neutral-600 text-xs dark:text-neutral-400">{t("pickerPending")}</p>
+      )}
+    </section>
+  );
+}
+
+/** 切り替えた送信先のモデルの入力上限に収まらない場合の表示 */
+function SwitchWarning({ check }: { check: ModelCheck }) {
+  const { overflow } = check;
+  return (
+    <p className="text-amber-700 text-xs dark:text-amber-400">
+      {check.kind === "tooLong"
+        ? t("pickerTooLong", overflow.model)
+        : t("pickerOverflow", [
+            overflow.model,
+            formatNumber(overflow.estimatedTokens),
+            formatNumber(overflow.budget),
+          ])}
+    </p>
   );
 }
 
@@ -252,7 +409,7 @@ function Actions({
   onStop,
   onRegenerate,
 }: {
-  state: Extract<PanelState, { kind: "summary" }>;
+  state: SummaryState;
   onStop: () => void;
   onRegenerate: () => void;
 }) {

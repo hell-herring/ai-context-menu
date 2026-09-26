@@ -439,5 +439,39 @@
         "content": "$1"
       }
     }
+  },
+  "pickerProvider": {
+    "message": "AI"
+  },
+  "pickerModel": {
+    "message": "Model"
+  },
+  "pickerPreset": {
+    "message": "Preset"
+  },
+  "pickerPending": {
+    "message": "Regenerate to send with the selected AI, model, and preset (your settings stay unchanged)"
+  },
+  "pickerOverflow": {
+    "message": "The input doesn't fit the selected model ($MODEL$): about $TOKENS$ tokens / $BUDGET$ tokens available. When you regenerate, you'll be asked whether to send only what fits",
+    "placeholders": {
+      "model": {
+        "content": "$1"
+      },
+      "tokens": {
+        "content": "$2"
+      },
+      "budget": {
+        "content": "$3"
+      }
+    }
+  },
+  "pickerTooLong": {
+    "message": "The selected model ($MODEL$) can't take this request even with the page text removed, so it can't be sent",
+    "placeholders": {
+      "model": {
+        "content": "$1"
+      }
+    }
   }
 }

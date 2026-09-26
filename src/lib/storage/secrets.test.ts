@@ -1,7 +1,14 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { browser } from "wxt/browser";
 import { fakeBrowser } from "wxt/testing/fake-browser";
-import { getApiKey, maskApiKey, normalizeApiKey, removeApiKey, setApiKey } from "./secrets";
+import {
+  getApiKey,
+  maskApiKey,
+  normalizeApiKey,
+  removeApiKey,
+  setApiKey,
+  watchApiKeys,
+} from "./secrets";
 
 const DUMMY_KEY = "sk-test-dummy-1234";
 
@@ -45,5 +52,23 @@ describe("normalizeApiKey", () => {
 describe("maskApiKey", () => {
   it("末尾 4 文字以外を表示しない", () => {
     expect(maskApiKey(DUMMY_KEY)).toBe("••••1234");
+  });
+});
+
+describe("watchApiKeys", () => {
+  it("キーの保存・削除だけを通知し、キーの値は渡さない", async () => {
+    const onChange = vi.fn();
+    const unwatch = watchApiKeys(onChange);
+
+    await browser.storage.local.set({ other: 1 });
+    expect(onChange).not.toHaveBeenCalled();
+    await setApiKey("openai", DUMMY_KEY);
+    await removeApiKey("openai");
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange.mock.calls.flat()).toEqual([]);
+
+    unwatch();
+    await setApiKey("anthropic", DUMMY_KEY);
+    expect(onChange).toHaveBeenCalledTimes(2);
   });
 });

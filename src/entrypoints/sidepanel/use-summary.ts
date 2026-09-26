@@ -8,9 +8,18 @@ import {
   planRequest,
   type RequestPlan,
 } from "../../lib/job/request";
-import { PROVIDERS } from "../../lib/providers/registry";
-import { resolveProvider } from "../../lib/providers/select";
 import {
+  modelChoices,
+  resolveTarget,
+  settingsFor,
+  type Target,
+  targetForProvider,
+} from "../../lib/job/target";
+import type { PresetId } from "../../lib/prompt/presets";
+import { PROVIDERS } from "../../lib/providers/registry";
+import type { RegisteredKeys } from "../../lib/providers/select";
+import {
+  PROVIDER_IDS,
   ProviderError,
   type ProviderErrorKind,
   type ProviderId,
@@ -18,9 +27,9 @@ import {
   type Usage,
 } from "../../lib/providers/types";
 import type { ContentJob, CoreSettings, Job, JobErrorCode } from "../../lib/storage/schema";
-import { getApiKeys } from "../../lib/storage/secrets";
+import { getApiKeys, watchApiKeys } from "../../lib/storage/secrets";
 import { readJob, removeJob, watchJob } from "../../lib/storage/session";
-import { getCoreSettings, getExcludedDomains } from "../../lib/storage/settings";
+import { getCoreSettings, getExcludedDomains, watchCoreSettings } from "../../lib/storage/settings";
 
 export type Phase =
   /** 受け取ったジョブの送信前の判定中（設定の読み込み中） */
@@ -33,14 +42,26 @@ export type Phase =
   | { kind: "stopped" }
   | { kind: "error"; error: ProviderErrorKind | "apiKeyMissing" | "excludedDomain" };
 
+/** 送信前の判定で、選択中のモデルの入力上限に収まらなかった結果 */
+export type ModelCheck = Exclude<RequestPlan, { kind: "ready" }>;
+
 export type PanelState =
   | { kind: "idle" }
   | { kind: "jobError"; error: JobErrorCode }
   | {
       kind: "summary";
       job: ContentJob;
-      /** 送信先（API キー・設定を読んだ後に決まる） */
-      target: { provider: ProviderId; model: string } | undefined;
+      /** 送信した（送信中の）送信先とプリセット。送信直前の判定を通った後に決まる */
+      sent: (Target & { presetId: PresetId }) | undefined;
+      /** サイドパネルで選んだ送信先（未選択なら設定の既定）。このジョブだけに効かせる */
+      choice: Target | undefined;
+      /** 使うプリセット（受け取った時点ではメニューで選んだもの） */
+      presetId: PresetId;
+      /**
+       * 送信先・プリセットを切り替えた時点の判定で、入力上限に収まらなかった結果（確認中以外で表示する。
+       * 再生成すると送信直前にも判定し、確認・エラーになる）
+       */
+      switchCheck: ModelCheck | undefined;
       phase: Phase;
       text: string;
       /**
@@ -53,30 +74,38 @@ export type PanelState =
 
 type ApiKeys = Awaited<ReturnType<typeof getApiKeys>>;
 
-/** 使用するプロバイダとキー（設定のプロバイダにキーがなければキーのある最初のもの） */
-function resolveTarget(settings: CoreSettings, apiKeys: ApiKeys) {
-  const provider = resolveProvider(settings.defaultProvider, {
-    anthropic: apiKeys.anthropic !== undefined,
-    openai: apiKeys.openai !== undefined,
-  });
-  const apiKey = provider && apiKeys[provider];
-  return provider && apiKey ? { provider, apiKey } : undefined;
+/** サイドパネルでの切り替えに使う、設定とキーの有無（キーの値は持たない） */
+export interface PanelEnv {
+  settings: CoreSettings;
+  keys: RegisteredKeys;
+}
+
+function keysOf(apiKeys: ApiKeys): RegisteredKeys {
+  return { anthropic: apiKeys.anthropic !== undefined, openai: apiKeys.openai !== undefined };
 }
 
 /**
- * ジョブを受け取った時点での、選択中のモデルのコンテキスト長による判定。
+ * 送信先のモデルのコンテキスト長による判定（ジョブ受信時・切り替え時）。
  * 収まらない（`overflow`）・本文を空にしても収まらない（`tooLong`）場合にその結果を返す
  */
-function receivedModelCheck(
+function modelCheck(
   job: ContentJob,
-  settings: CoreSettings,
-  apiKeys: ApiKeys,
-): Exclude<RequestPlan, { kind: "ready" }> | undefined {
-  const target = resolveTarget(settings, apiKeys);
+  presetId: PresetId,
+  choice: Target | undefined,
+  env: PanelEnv,
+  approval: ModelFitApproval | undefined,
+): ModelCheck | undefined {
+  const target = resolveTarget(env.settings, env.keys, choice);
   if (!target) {
     return undefined;
   }
-  const plan = planRequest(job, settings, target.provider, browser.i18n.getUILanguage(), undefined);
+  const plan = planRequest(
+    { ...job, presetId },
+    settingsFor(env.settings, target),
+    target.provider,
+    browser.i18n.getUILanguage(),
+    approval,
+  );
   return plan.kind === "ready" ? undefined : plan;
 }
 
@@ -89,6 +118,7 @@ function receivedModelCheck(
  */
 export function useSummary() {
   const [state, setState] = useState<PanelState>({ kind: "idle" });
+  const [env, setEnv] = useState<PanelEnv | undefined>(undefined);
   const controllerRef = useRef<AbortController | undefined>(undefined);
   const runRef = useRef(0);
   /** 最後に受け取ったジョブの ID。前のジョブの表示に対する操作（確認・再生成）を受け付けないために使う */
@@ -102,7 +132,12 @@ export function useSummary() {
   }, []);
 
   const send = useCallback(
-    async (job: ContentJob, fitApproval: ModelFitApproval | undefined) => {
+    async (
+      job: ContentJob,
+      presetId: PresetId,
+      choice: Target | undefined,
+      fitApproval: ModelFitApproval | undefined,
+    ) => {
       cancelRun();
       const run = runRef.current;
       const controller = new AbortController();
@@ -122,7 +157,10 @@ export function useSummary() {
       setState({
         kind: "summary",
         job,
-        target: undefined,
+        sent: undefined,
+        choice,
+        presetId,
+        switchCheck: undefined,
         phase: { kind: "streaming" },
         text: "",
         fitApproval,
@@ -147,20 +185,20 @@ export function useSummary() {
           update({ phase: { kind: "error", error: "excludedDomain" } });
           return;
         }
-        const target = resolveTarget(settings, apiKeys);
-        if (!target) {
+        // サイドパネルで選んだプロバイダのキーが削除されていれば、他のプロバイダに黙って送らない
+        const target = resolveTarget(settings, keysOf(apiKeys), choice);
+        const apiKey = target && apiKeys[target.provider];
+        if (!target || !apiKey) {
           update({ phase: { kind: "error", error: "apiKeyMissing" } });
           return;
         }
-        const { provider, apiKey } = target;
-        const model = settings.models[provider];
-        update({ target: { provider, model } });
+        const { provider, model } = target;
 
         // 送信直前にも、その時点の設定のモデルのコンテキスト長で判定する（docs/spec.md §3.3）
         // 確認したときとプロバイダ・モデル・使える量が変わっていれば、切り詰めずに確認に戻す
         const plan = planRequest(
-          job,
-          settings,
+          { ...job, presetId },
+          settingsFor(settings, target),
           provider,
           browser.i18n.getUILanguage(),
           fitApproval,
@@ -174,7 +212,7 @@ export function useSummary() {
           update({ phase: { kind: "error", error: "context_length" } });
           return;
         }
-        update({ fittedChars: plan.fittedChars });
+        update({ sent: { provider, model, presetId }, fittedChars: plan.fittedChars });
 
         const events = PROVIDERS[provider].stream(apiKey, {
           ...plan.prompt,
@@ -221,12 +259,18 @@ export function useSummary() {
         return;
       }
       // 設定を読む前に表示を新しいジョブに置き換え、前のジョブの確認・再生成ボタンを押せないようにする
-      setState({
+      const summary = {
         kind: "summary",
         job,
-        target: undefined,
-        phase: { kind: "preparing" },
+        sent: undefined,
+        choice: undefined,
+        presetId: job.presetId,
+        switchCheck: undefined,
         text: "",
+      } as const;
+      setState({
+        ...summary,
+        phase: { kind: "preparing" },
         fitApproval: undefined,
         fittedChars: undefined,
       });
@@ -238,10 +282,13 @@ export function useSummary() {
       if (runRef.current !== run) {
         return;
       }
+      const env = settings && apiKeys ? { settings, keys: keysOf(apiKeys) } : undefined;
+      if (env) {
+        setEnv(env);
+      }
       // 設定を読めなければ確認する側に倒す
       const mode = settings?.confirmBeforeSend ?? "always";
-      const check = settings && apiKeys ? receivedModelCheck(job, settings, apiKeys) : undefined;
-      const summary = { kind: "summary", job, target: undefined, text: "" } as const;
+      const check = env ? modelCheck(job, job.presetId, undefined, env, undefined) : undefined;
       if (check?.kind === "tooLong") {
         // どう切り詰めても送れないため、確認を出さずにエラーにする
         setState({
@@ -262,11 +309,36 @@ export function useSummary() {
           fittedChars: undefined,
         });
       } else {
-        void send(job, undefined);
+        void send(job, job.presetId, undefined, undefined);
       }
     },
     [cancelRun, send],
   );
+
+  // 切り替えの選択肢（キーのあるプロバイダ・保存済みのモデル）。他のページでの保存も反映する
+  useEffect(() => {
+    let disposed = false;
+    let loads = 0;
+    const load = async () => {
+      const load = ++loads;
+      try {
+        const [settings, apiKeys] = await Promise.all([getCoreSettings(), getApiKeys()]);
+        if (!disposed && load === loads) {
+          setEnv({ settings, keys: keysOf(apiKeys) });
+        }
+      } catch (error) {
+        console.error("Failed to load settings", error);
+      }
+    };
+    const unwatchSettings = watchCoreSettings(() => void load());
+    const unwatchKeys = watchApiKeys(() => void load());
+    void load();
+    return () => {
+      disposed = true;
+      unwatchSettings();
+      unwatchKeys();
+    };
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -310,8 +382,78 @@ export function useSummary() {
   const current =
     state.kind === "summary" && state.job.id === latestJobIdRef.current ? state : undefined;
 
+  /**
+   * 送信先・プリセットを切り替える（送信はしない。確認中なら確認の内容を、それ以外は再生成したときの
+   * 見込みを、切り替えた時点のモデルのコンテキスト長で判定し直す。docs/spec.md §3.3）
+   */
+  const select = useCallback(
+    (choice: Target | undefined, presetId: PresetId) => {
+      if (
+        !current ||
+        !env ||
+        current.phase.kind === "preparing" ||
+        current.phase.kind === "streaming" ||
+        current.phase.kind === "cancelled"
+      ) {
+        return;
+      }
+      const check = modelCheck(current.job, presetId, choice, env, current.fitApproval);
+      const next = { ...current, choice, presetId };
+      if (current.phase.kind === "confirm") {
+        setState({
+          ...next,
+          switchCheck: undefined,
+          phase:
+            check?.kind === "tooLong"
+              ? { kind: "error", error: "context_length" }
+              : { kind: "confirm", overflow: check?.overflow },
+        });
+      } else {
+        setState({ ...next, switchCheck: check });
+      }
+    },
+    [current, env],
+  );
+
+  /** 表示・切り替えに使う現在の送信先（選んだもの、なければ設定の既定） */
+  const selected =
+    current && env && (current.choice ?? resolveTarget(env.settings, env.keys, undefined));
+
   return {
     state,
+    env,
+    /** 選択中の送信先。キーのあるプロバイダがなければ undefined */
+    selected,
+    selectProvider: useCallback(
+      (provider: ProviderId) => {
+        if (current && env && PROVIDER_IDS.includes(provider)) {
+          select(targetForProvider(env.settings, provider), current.presetId);
+        }
+      },
+      [current, env, select],
+    ),
+    selectModel: useCallback(
+      (model: string) => {
+        // 選べるのは設定で保存したモデルと既定モデルだけ
+        if (
+          current &&
+          env &&
+          selected &&
+          modelChoices(env.settings, selected.provider).includes(model)
+        ) {
+          select({ provider: selected.provider, model }, current.presetId);
+        }
+      },
+      [current, env, selected, select],
+    ),
+    selectPreset: useCallback(
+      (presetId: PresetId) => {
+        if (current) {
+          select(current.choice, presetId);
+        }
+      },
+      [current, select],
+    ),
     /**
      * 確認後に送信する（oversize のジョブは切り詰め済みの本文を送る）。
      * モデルの入力上限の超過を表示していた場合は、モデルに収まる長さまで切り詰めて送る
@@ -319,7 +461,12 @@ export function useSummary() {
     confirm: useCallback(() => {
       if (current?.phase.kind === "confirm") {
         const { overflow } = current.phase;
-        void send(current.job, overflow ? approvalOf(overflow) : current.fitApproval);
+        void send(
+          current.job,
+          current.presetId,
+          current.choice,
+          overflow ? approvalOf(overflow) : current.fitApproval,
+        );
       }
     }, [current, send]),
     cancel: useCallback(() => {
@@ -330,7 +477,7 @@ export function useSummary() {
     stop: useCallback(() => controllerRef.current?.abort(), []),
     regenerate: useCallback(() => {
       if (current && current.phase.kind !== "preparing") {
-        void send(current.job, current.fitApproval);
+        void send(current.job, current.presetId, current.choice, current.fitApproval);
       }
     }, [current, send]),
   };
