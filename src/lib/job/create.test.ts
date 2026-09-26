@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { urlHostname } from "../domain/exclude";
 import { JobSchema } from "../storage/schema";
 import {
   createContentJob,
@@ -7,6 +8,7 @@ import {
   type ExtractedContent,
   type JobContext,
   jobByteSize,
+  limitUrl,
   toProviderUrl,
 } from "./create";
 
@@ -95,6 +97,40 @@ describe("createJobSource", () => {
     expect(source?.providerUrl).toHaveLength(2_048);
     expect(source?.oversize).toBe(true);
     expect(source?.oversizeReasons).toEqual(["metadata"]);
+  });
+});
+
+describe("limitUrl", () => {
+  const longCredentials = `https://${"u".repeat(5_000)}:pw@bank.example/path?q=1`;
+
+  it("上限内ならそのまま返す（ユーザー情報も含めて変えない）", () => {
+    expect(limitUrl("https://user:pass@example.com/", 100)).toBe("https://user:pass@example.com/");
+  });
+
+  it("ユーザー情報が長くて上限を超えても、ホスト名を失わない", () => {
+    const limited = limitUrl(longCredentials, 4_096);
+    expect(limited).toBe("https://bank.example/path?q=1");
+    expect(urlHostname(limited)).toBe("bank.example");
+  });
+
+  it("超過したら onTruncate を呼ぶ", () => {
+    let truncated = false;
+    limitUrl(`https://example.com/${"p".repeat(100)}`, 50, () => {
+      truncated = true;
+    });
+    expect(truncated).toBe(true);
+  });
+
+  it("ジョブのページ URL・フレーム URL・表示用 URL でもホスト名を保つ", () => {
+    const source = createJobSource({ ...content, url: longCredentials }, 1_000);
+    const job = createErrorJob(
+      { ...context, pageUrl: longCredentials, frameUrl: longCredentials },
+      "editable",
+    );
+    expect(urlHostname(source?.displayUrl ?? "")).toBe("bank.example");
+    expect(source?.oversizeReasons).toEqual(["metadata"]);
+    expect(urlHostname(job.pageUrl)).toBe("bank.example");
+    expect(urlHostname(job.frameUrl ?? "")).toBe("bank.example");
   });
 });
 

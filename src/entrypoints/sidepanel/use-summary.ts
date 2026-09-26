@@ -94,7 +94,8 @@ export function useSummary() {
         // プロバイダ呼び出しの直前に、その時点の設定で毎回判定する（docs/guardrails.md §2）
         if (
           isExcludedPage(job, excludedDomains) ||
-          isExcludedUrl(job.source.displayUrl, excludedDomains)
+          isExcludedUrl(job.source.displayUrl, excludedDomains) ||
+          isExcludedUrl(job.source.providerUrl, excludedDomains)
         ) {
           update({ phase: { kind: "error", error: "excludedDomain" } });
           return;
