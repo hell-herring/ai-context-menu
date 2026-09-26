@@ -114,6 +114,10 @@ describe("prepareJob", () => {
     it.each([
       ["注入に失敗", () => Promise.reject(new Error("Cannot access"))],
       ["不正な戻り値", async () => ({ origin: 1 })],
+      [
+        "祖先オリジンが上限を超える",
+        async () => Array.from({ length: 40 }, (_, i) => `https://a${i}.example`),
+      ],
     ])("オリジンを確認できなければ（%s）取得しない", async (_label, runScript) => {
       const deps = createDeps(runScript);
       const job = await prepareJob(selectionTarget, opaque, deps);

@@ -21,7 +21,7 @@ export const SelectionExtractionSchema = z.object({
   editable: z.boolean(),
 }) satisfies z.ZodType<SelectionExtraction>;
 
-/** フレームのオリジン（自身 + 祖先） */
+/** フレームのオリジン（自身 + 祖先）。上限を超える場合は失敗させ、取得しない（切り捨てると判定をすり抜けるため） */
 export const FrameOriginsSchema = z
   .array(z.string().max(4_096))
   .min(1)

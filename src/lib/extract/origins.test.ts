@@ -29,10 +29,14 @@ describe("collectOrigins", () => {
     expect(collectOrigins(fakeWindow("null"))).toEqual(["null"]);
   });
 
-  it("祖先オリジンは上限までに制限する", () => {
+  it("祖先オリジンは切り捨てずにすべて返し、上限を超える場合は検証に失敗する（取得しない）", () => {
     const ancestors = Array.from({ length: 50 }, (_, i) => `https://a${i}.example`);
     const origins = collectOrigins(fakeWindow("https://x.example", ancestors));
-    expect(origins).toHaveLength(MAX_ANCESTOR_ORIGINS + 1);
-    expect(FrameOriginsSchema.safeParse(origins).success).toBe(true);
+    expect(origins).toHaveLength(51);
+    expect(origins.at(-1)).toBe("https://a49.example");
+    expect(FrameOriginsSchema.safeParse(origins).success).toBe(false);
+    expect(FrameOriginsSchema.safeParse(origins.slice(0, MAX_ANCESTOR_ORIGINS + 1)).success).toBe(
+      true,
+    );
   });
 });
