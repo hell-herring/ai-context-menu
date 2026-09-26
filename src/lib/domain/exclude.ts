@@ -12,7 +12,7 @@ const INVALID_HOST_CHARS = /[\s/\\:?#@*%[\]]/;
 const IPV4 = /^\d+\.\d+\.\d+\.\d+$/;
 
 /** 別の URL を埋め込むスキーム（オリジンが "null" になるため、埋め込まれた URL のホストで判定する） */
-const WRAPPER_PROTOCOLS = new Set(["view-source:", "filesystem:"]);
+export const WRAPPER_PROTOCOLS: ReadonlySet<string> = new Set(["view-source:", "filesystem:"]);
 
 /**
  * 入力されたパターンを正規化する（小文字化・IDN の Punycode 化・末尾のドットの除去）。不正なら undefined。
@@ -89,11 +89,13 @@ export function matchesDomainPattern(hostname: string, pattern: string): boolean
   return hostname === pattern;
 }
 
+export function isExcludedHostname(hostname: string, patterns: readonly string[]): boolean {
+  return hostname !== "" && patterns.some((pattern) => matchesDomainPattern(hostname, pattern));
+}
+
 export function isExcludedUrl(url: string, patterns: readonly string[]): boolean {
   const hostname = urlHostname(url);
-  return (
-    hostname !== undefined && patterns.some((pattern) => matchesDomainPattern(hostname, pattern))
-  );
+  return hostname !== undefined && isExcludedHostname(hostname, patterns);
 }
 
 /**

@@ -54,6 +54,8 @@ export const JOB_LIMITS = {
   title: 300,
   providerUrl: 2_048,
   displayUrl: 4_096,
+  /** DNS のホスト名の上限は 253 文字（末尾のドット・IDN を考慮して余裕を持たせる） */
+  hostname: 255,
 } as const;
 
 export const SOURCE_TYPES = ["page", "selection"] as const;
@@ -95,7 +97,14 @@ const JobBaseSchema = z.object({
   /** 除外判定用（プロバイダには送らない） */
   pageUrl: z.string().max(JOB_LIMITS.displayUrl),
   frameUrl: z.string().max(JOB_LIMITS.displayUrl).optional(),
+  /**
+   * 送信直前の除外判定用。切り詰める前のページ URL・フレーム URL から求めた正規化済みホスト名
+   * （保存用に短縮した URL からはホスト名を正しく読み直せない場合があるため）
+   */
+  hostnames: z.array(z.string().min(1).max(JOB_LIMITS.hostname)).max(2),
 });
+
+export type JobBase = z.infer<typeof JobBaseSchema>;
 
 export const JobSourceSchema = z.object({
   type: z.enum(SOURCE_TYPES),
@@ -105,6 +114,8 @@ export const JobSourceSchema = z.object({
   displayUrl: z.string().max(JOB_LIMITS.displayUrl),
   /** プロバイダへ送る URL（origin + pathname のみ）。取得できなければ空 */
   providerUrl: z.string().max(JOB_LIMITS.providerUrl),
+  /** 送信直前の除外判定用。切り詰める前の取得元 URL の正規化済みホスト名。なければ空 */
+  hostname: z.string().max(JOB_LIMITS.hostname),
   /** 送信候補の本文。oversize の場合は上限まで切り詰め済み */
   text: z.string(),
   /** 切り詰め前の本文の文字数 */

@@ -8,6 +8,7 @@ import {
   type ExtractedContent,
   type JobContext,
   jobByteSize,
+  jobHostname,
   limitUrl,
   toProviderUrl,
 } from "./create";
@@ -52,6 +53,7 @@ describe("createJobSource", () => {
       title: "タイトル",
       displayUrl: content.url,
       providerUrl: "https://example.com/path/to",
+      hostname: "example.com",
       text: "本文",
       originalLength: 2,
       inputLimit: 1_000,
@@ -121,6 +123,11 @@ describe("limitUrl", () => {
     expect(truncated).toBe(true);
   });
 
+  it("filesystem: などに包まれた URL でも、上限超過時はユーザー情報を除いてホスト名を保つ", () => {
+    const wrapped = `filesystem:https://${"u".repeat(5_000)}@bank.example/temporary/doc`;
+    expect(limitUrl(wrapped, 4_096)).toBe("filesystem:https://bank.example/temporary/doc");
+  });
+
   it("ジョブのページ URL・フレーム URL・表示用 URL でもホスト名を保つ", () => {
     const source = createJobSource({ ...content, url: longCredentials }, 1_000);
     const job = createErrorJob(
@@ -131,6 +138,40 @@ describe("limitUrl", () => {
     expect(source?.oversizeReasons).toEqual(["metadata"]);
     expect(urlHostname(job.pageUrl)).toBe("bank.example");
     expect(urlHostname(job.frameUrl ?? "")).toBe("bank.example");
+  });
+});
+
+describe("ジョブに保存する除外判定用のホスト名", () => {
+  // 保存用に切り詰めた URL からはホスト名を読み直せない場合があるため、切り詰める前の URL から求めて保存する
+  const wrapped = `filesystem:https://${"u".repeat(5_000)}@bank.example/temporary/doc`;
+
+  it("切り詰める前のページ URL・フレーム URL・取得元 URL から求める", () => {
+    const job = createErrorJob(
+      { ...context, pageUrl: "https://news.example/", frameUrl: wrapped },
+      "editable",
+    );
+    expect(job.hostnames).toEqual(["news.example", "bank.example"]);
+    expect(createJobSource({ ...content, url: wrapped }, 1_000)?.hostname).toBe("bank.example");
+  });
+
+  it("ページ URL とフレーム URL が同じホストなら 1 つにまとめ、ホスト名のない URL は含めない", () => {
+    expect(
+      createErrorJob(
+        { ...context, pageUrl: "https://a.example/1", frameUrl: "https://a.example/2" },
+        "editable",
+      ).hostnames,
+    ).toEqual(["a.example"]);
+    expect(
+      createErrorJob({ ...context, pageUrl: "about:blank", frameUrl: "file:///x" }, "editable")
+        .hostnames,
+    ).toEqual([]);
+    expect(createJobSource({ ...content, url: "file:///x" }, 1_000)?.hostname).toBe("");
+  });
+
+  it("jobHostname は長すぎるホスト名をサフィックスを残して切る", () => {
+    const hostname = jobHostname(`https://${"a".repeat(300)}.bank.example/`);
+    expect(hostname).toHaveLength(255);
+    expect(hostname.endsWith(".bank.example")).toBe(true);
   });
 });
 
@@ -148,6 +189,7 @@ describe("createContentJob / createErrorJob", () => {
     expect(JobSchema.parse(error)).toEqual({
       ...context,
       frameUrl: "https://frame.example/",
+      hostnames: ["example.com", "frame.example"],
       kind: "error",
       error: "editable",
     });

@@ -1,4 +1,5 @@
-import type { Job } from "../storage/schema";
+import { isExcludedHostname, isExcludedPage, isExcludedUrl } from "../domain/exclude";
+import type { ContentJob, Job } from "../storage/schema";
 
 /** これより古いジョブは送信せず破棄する（取り残されたジョブの誤送信防止。docs/tech-stack.md §4.2） */
 export const JOB_MAX_AGE_MS = 60_000;
@@ -39,4 +40,19 @@ function isOlder(job: Pick<Job, "seq" | "createdAt">, latest: Pick<Job, "seq" | 
     return job.createdAt < latest.createdAt;
   }
   return job.seq < latest.seq;
+}
+
+/**
+ * 送信直前の除外判定（docs/guardrails.md §2）。ジョブ作成時に切り詰める前の URL から求めたホスト名で判定し、
+ * 念のため保存済みの URL（ページ・フレーム・表示用・送信用）でも判定する。
+ */
+export function isExcludedJob(job: ContentJob, patterns: readonly string[]): boolean {
+  return (
+    [...job.hostnames, job.source.hostname].some((hostname) =>
+      isExcludedHostname(hostname, patterns),
+    ) ||
+    isExcludedPage(job, patterns) ||
+    isExcludedUrl(job.source.displayUrl, patterns) ||
+    isExcludedUrl(job.source.providerUrl, patterns)
+  );
 }

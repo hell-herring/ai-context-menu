@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { browser } from "wxt/browser";
-import { isExcludedPage, isExcludedUrl } from "../../lib/domain/exclude";
-import { JobReceiver } from "../../lib/job/receive";
+import { isExcludedJob, JobReceiver } from "../../lib/job/receive";
 import { buildPrompt, describeOutputLanguage } from "../../lib/prompt/build";
 import { PROVIDERS } from "../../lib/providers/registry";
 import { resolveProvider } from "../../lib/providers/select";
@@ -92,11 +91,7 @@ export function useSummary() {
         ]);
         // 確認待ち・再生成の間に除外ドメインが追加された場合も送らない。
         // プロバイダ呼び出しの直前に、その時点の設定で毎回判定する（docs/guardrails.md §2）
-        if (
-          isExcludedPage(job, excludedDomains) ||
-          isExcludedUrl(job.source.displayUrl, excludedDomains) ||
-          isExcludedUrl(job.source.providerUrl, excludedDomains)
-        ) {
+        if (isExcludedJob(job, excludedDomains)) {
           update({ phase: { kind: "error", error: "excludedDomain" } });
           return;
         }

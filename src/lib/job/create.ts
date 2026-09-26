@@ -1,9 +1,11 @@
+import { urlHostname, WRAPPER_PROTOCOLS } from "../domain/exclude";
 import { escapedTextLength, truncateToEscapedLength } from "../prompt/escape";
 import type { PresetId } from "../prompt/presets";
 import {
   type ExtractMethod,
   JOB_LIMITS,
   type Job,
+  type JobBase,
   type JobErrorCode,
   type JobSource,
   type OversizeReason,
@@ -93,6 +95,7 @@ export function createJobSource(
     title,
     displayUrl,
     providerUrl,
+    hostname: jobHostname(content.url),
     text,
     originalLength,
     inputLimit: maxInputChars,
@@ -109,19 +112,32 @@ export function createErrorJob(context: JobContext, error: JobErrorCode): Job {
   return { ...jobBase(context), kind: "error", error };
 }
 
-function jobBase(context: JobContext): JobContext {
-  const base: JobContext = {
+function jobBase(context: JobContext): JobBase {
+  const hostnames = new Set(
+    [context.pageUrl, context.frameUrl].map((url) => (url === undefined ? "" : jobHostname(url))),
+  );
+  hostnames.delete("");
+  const base: JobBase = {
     id: context.id,
     windowId: context.windowId,
     seq: context.seq,
     createdAt: context.createdAt,
     presetId: context.presetId,
     pageUrl: limitUrl(context.pageUrl, JOB_LIMITS.displayUrl),
+    hostnames: [...hostnames],
   };
   if (context.frameUrl !== undefined) {
     base.frameUrl = limitUrl(context.frameUrl, JOB_LIMITS.displayUrl);
   }
   return base;
+}
+
+/**
+ * 送信直前の除外判定に使うホスト名を、切り詰める前の URL から求める。なければ空。
+ * 上限を超える（通常ありえない）長さのホスト名は、サフィックス（`*.example.com` の判定に使う部分）を残して切る。
+ */
+export function jobHostname(url: string): string {
+  return (urlHostname(url) ?? "").slice(-JOB_LIMITS.hostname);
 }
 
 /**
@@ -140,6 +156,10 @@ export function limitUrl(url: string, max: number, onTruncate?: () => void): str
 function stripUrlCredentials(url: string): string {
   try {
     const parsed = new URL(url);
+    // `filesystem:https://user@host/…` 等は埋め込まれた URL のユーザー情報を除く
+    if (WRAPPER_PROTOCOLS.has(parsed.protocol)) {
+      return `${parsed.protocol}${stripUrlCredentials(url.slice(parsed.protocol.length))}`;
+    }
     if (parsed.username === "" && parsed.password === "") {
       return url;
     }

@@ -19,6 +19,7 @@ function context(windowId: number, seq: number): JobContext {
 function contentJob(ctx: JobContext, text: string): Job {
   return {
     ...ctx,
+    hostnames: ["example.com"],
     kind: "content",
     source: {
       type: "page",
@@ -26,6 +27,7 @@ function contentJob(ctx: JobContext, text: string): Job {
       title: "t",
       displayUrl: "https://example.com/",
       providerUrl: "https://example.com/",
+      hostname: "example.com",
       text,
       originalLength: text.length,
       inputLimit: 50_000,
@@ -64,7 +66,12 @@ describe("JobWriter", () => {
     const writer = new JobWriter();
     const ctx = context(1, writer.nextSeq(1));
     await writer.write(contentJob(ctx, "x".repeat(MAX_JOB_BYTES)));
-    expect(await readJob(1)).toEqual({ ...ctx, kind: "error", error: "tooLarge" });
+    expect(await readJob(1)).toEqual({
+      ...ctx,
+      hostnames: ["example.com"],
+      kind: "error",
+      error: "tooLarge",
+    });
   });
 
   it("書き込みに失敗したら小さなエラージョブを書き込む", async () => {
@@ -75,7 +82,12 @@ describe("JobWriter", () => {
     vi.spyOn(browser.storage.session, "set").mockImplementation(set);
 
     expect(await writer.write(contentJob(ctx, "body"))).toBe("written");
-    expect(await readJob(1)).toEqual({ ...ctx, kind: "error", error: "tooLarge" });
+    expect(await readJob(1)).toEqual({
+      ...ctx,
+      hostnames: ["example.com"],
+      kind: "error",
+      error: "tooLarge",
+    });
   });
 
   it("書き込みは直列に行う", async () => {
