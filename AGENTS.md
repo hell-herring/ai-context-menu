@@ -47,6 +47,8 @@ pnpm build:e2e        # E2E 用ビルド（モックプロバイダ入り。.out
 pnpm test:e2e         # build:e2e 後に実行。Playwright（tests/e2e/）。実 API は呼ばない
 ```
 
+リリースは `package.json` の `version` を上げてコミットし、同じ版のタグ `v<version>` を push する。`.github/workflows/release.yml` が CI（`ci.yml` を `workflow_call`）を通した本番ビルドを zip にして GitHub Release に添付する（E2E 用ビルドは添付しない）。
+
 `test:e2e` は Playwright の Chromium を使う（`pnpm exec playwright install chromium`）。インストール済みの Chromium を使う場合は `PLAYWRIGHT_CHROMIUM_EXECUTABLE` にパスを指定する。
 
 Node.js は `.node-version`（26）、pnpm は `package.json` の `packageManager`（12.x）に合わせる。

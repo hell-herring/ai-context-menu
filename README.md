@@ -14,11 +14,13 @@
 
 ## インストール
 
-Chrome ウェブストアでは公開しません。ビルドして手動で読み込みます。
+Chrome ウェブストアでは公開しません。ビルド済みの zip をダウンロードするか、自分でビルドして手動で読み込みます。
 
-1. Node.js 26 と pnpm 12 を用意し、`pnpm install && pnpm build`
+1. 次のどちらかで拡張機能のフォルダを用意する
+   - [Releases](../../releases) から `ai-context-menu-<version>-chrome.zip` をダウンロードして展開する（`SHA256SUMS.txt` で `sha256sum -c SHA256SUMS.txt` などとして検証できる）
+   - Node.js 26 と pnpm 12 を用意し、`pnpm install && pnpm build`（出力は `.output/chrome-mv3`）
 2. `chrome://extensions` を開き「デベロッパー モード」を有効化
-3. 「パッケージ化されていない拡張機能を読み込む」で `.output/chrome-mv3` を選択
+3. 「パッケージ化されていない拡張機能を読み込む」で、展開したフォルダ（または `.output/chrome-mv3`）を選択
 4. 開いた設定画面で Anthropic または OpenAI の API キーを保存し、「接続テスト」で確認（利用上限を設定したキーを推奨）。モデル・出力言語・上限なども設定画面で変更できる
 5. ページ上で右クリック →「AI Context Menu」→「要約する」など
 
@@ -32,6 +34,14 @@ pnpm check   # lint + typecheck + test
 コマンドの一覧と規約は [AGENTS.md](./AGENTS.md) を参照。
 
 web 版 Claude Code / web 版 Codex では `bash scripts/setup-dev-env.sh` で同じ開発環境（Node.js・pnpm・依存・E2E 用 Chromium）を揃える。Claude Code ではセッション開始時に自動で実行される。Codex では環境設定の **Setup script と Maintenance script の両方**に `bash scripts/setup-dev-env.sh` を指定し、設定後に新しい環境を作成する。設定項目、必要なネットワーク接続先、確認コマンドは [開発環境 §3.2](./docs/dev-environment.md#32-web-版-codex) を参照。
+
+### リリース
+
+`package.json` の `version` を上げてコミットし、同じ版のタグ（`v1.2.3`。プレリリースは `v1.2.3-rc.1`）を push すると、GitHub Actions（`.github/workflows/release.yml`）が CI と同じ検査を通した本番ビルドを zip にして GitHub Release に添付する。
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
 
 ## ドキュメント
 

@@ -1,0 +1,82 @@
+name: Release
+
+# `v1.2.3` 形式のタグの push で、CI と同じ検査を通した本番ビルドを zip にして GitHub Release に添付する。
+# ストアには提出しない（docs/spec.md D-2）。E2E 用ビルドは添付しない。
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  # タグと package.json の version（manifest の version になる）の一致を確認する
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Verify tag matches package.json version
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::タグは v1.2.3 / v1.2.3-rc.1 形式にしてください: $TAG"
+            exit 1
+          fi
+          version="$(jq -r .version package.json)"
+          if [[ "v$version" != "$TAG" ]]; then
+            echo "::error::タグ ($TAG) と package.json の version ($version) が一致しません"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  # CI と同じ検査（check・本番ビルド・test:build・E2E）。検査済みの本番ビルドを chrome-mv3 として保存する
+  ci:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: [version, ci]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download production build
+        uses: actions/download-artifact@v8
+        with:
+          name: chrome-mv3
+          path: chrome-mv3
+
+      - name: Package
+        id: package
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          zip_name="ai-context-menu-${VERSION}-chrome.zip"
+          (cd chrome-mv3 && zip -r -X "../${zip_name}" .)
+          sha256sum "$zip_name" > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          echo "zip=$zip_name" >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          ZIP: ${{ steps.package.outputs.zip }}
+        run: |
+          prerelease=()
+          if [[ "$TAG" == *-* ]]; then
+            prerelease=(--prerelease)
+          fi
+          gh release create "$TAG" "$ZIP" SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "$TAG" \
+            --generate-notes \
+            "${prerelease[@]}"

@@ -248,6 +248,8 @@ user:
 
 CI（GitHub Actions）は `pnpm install --frozen-lockfile` → `pnpm audit --prod` → `check` → `build`（本番）→ `test:build`（manifest スナップショット・テスト専用マーカー検査）→ `build:e2e` → Playwright の Chromium の導入 → `test:e2e` を実行し、**本番ビルド**（`.output/chrome-mv3`）をアーティファクトとして保存する。E2E 用ビルドは配布しない。
 
+リリース（`.github/workflows/release.yml`）は `v1.2.3` 形式のタグの push で動き、タグと `package.json` の `version`（manifest の `version` になる。`-rc.1` などの接尾辞は WXT が `version_name` に回す）の一致を確認 → 上記の CI を `workflow_call` でそのまま実行 → CI が保存した**検査済みの本番ビルド**を `ai-context-menu-<version>-chrome.zip` にまとめ、`SHA256SUMS.txt` とともに GitHub Release に添付する（`-` を含むタグはプレリリース）。リリース時に別途ビルドし直さないため、添付物は検査を通したものと同一になる。`contents: write` はリリースを作るジョブにだけ付与する。
+
 ## 6. テスト戦略
 
 | 層 | 対象 | 方法 |
