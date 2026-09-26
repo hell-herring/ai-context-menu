@@ -24,10 +24,20 @@ export type StreamEvent =
   | { type: "text"; text: string }
   | { type: "done"; stopReason: StopReason; usage?: Usage };
 
+/** モデル一覧の 1 件。上限はプロバイダが返す値（OpenAI はアダプタ内の既知値）で、分からなければ undefined */
+export interface ModelInfo {
+  id: string;
+  /** 入力（コンテキスト）の上限トークン数 */
+  maxInputTokens: number | undefined;
+  /** 出力トークン数（`max_tokens` / `max_output_tokens`）の上限 */
+  maxOutputTokens: number | undefined;
+}
+
 export interface Provider {
   id: ProviderId;
   displayName: string;
-  listModels(apiKey: string): Promise<string[]>;
+  /** テキスト生成に使えるモデルの一覧 */
+  listModels(apiKey: string): Promise<ModelInfo[]>;
   /** 接続テスト。キーが無効なら ProviderError を投げる */
   verifyKey(apiKey: string): Promise<void>;
   stream(apiKey: string, req: SummarizeRequest): AsyncIterable<StreamEvent>;

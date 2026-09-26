@@ -1,10 +1,17 @@
-import { type FormEvent, useId, useState } from "react";
+import { type FormEvent, type ReactNode, useId, useState } from "react";
 import { type MessageKey, t } from "../../lib/i18n";
+import { PROVIDER_ERROR_MESSAGES } from "../../lib/providers/error-messages";
 import { PROVIDERS } from "../../lib/providers/registry";
-import type { ProviderId } from "../../lib/providers/types";
-import { maskApiKey, normalizeApiKey, removeApiKey, setApiKey } from "../../lib/storage/secrets";
-
-type Notice = { key: MessageKey; error: boolean };
+import { ProviderError, type ProviderId } from "../../lib/providers/types";
+import {
+  getApiKey,
+  maskApiKey,
+  normalizeApiKey,
+  removeApiKey,
+  setApiKey,
+} from "../../lib/storage/secrets";
+import { type Notice, StatusMessage } from "./StatusMessage";
+import { FIELD, HINT, PRIMARY_BUTTON, SECONDARY_BUTTON } from "./styles";
 
 const HEADINGS = {
   anthropic: "optionsAnthropicHeading",
@@ -17,37 +24,43 @@ const PLACEHOLDERS: Record<ProviderId, string> = {
   openai: "sk-...",
 };
 
-/** プロバイダ 1 つ分の API キーの保存・削除。キーは storage.local のみに置く（docs/guardrails.md §1） */
+/**
+ * プロバイダ 1 つ分の設定。API キーの保存・削除・接続テストと、`children`（モデルの設定）を表示する。
+ * キーは storage.local のみに置く（docs/guardrails.md §1）
+ */
 export function ApiKeySection({
   provider,
   stored,
   onChange,
+  children,
 }: {
   provider: ProviderId;
   /** 保存済みのキー（マスク済み）。未設定なら undefined */
   stored: string | undefined;
   /** 保存・削除の後に呼ぶ。引数は新しいマスク済みのキー */
   onChange: (masked: string | undefined) => Promise<void>;
+  children?: ReactNode;
 }) {
   const headingId = useId();
   const inputId = useId();
   const [input, setInput] = useState("");
   const [notice, setNotice] = useState<Notice | undefined>(undefined);
+  const [testing, setTesting] = useState(false);
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
     const apiKey = normalizeApiKey(input);
     if (apiKey === undefined) {
-      setNotice({ key: "optionsInvalidKey", error: true });
+      setNotice({ message: t("optionsInvalidKey"), tone: "error" });
       return;
     }
     try {
       await setApiKey(provider, apiKey);
       setInput("");
       await onChange(maskApiKey(apiKey));
-      setNotice({ key: "optionsSaved", error: false });
+      setNotice({ message: t("optionsSaved"), tone: "success" });
     } catch {
-      setNotice({ key: "optionsSaveFailed", error: true });
+      setNotice({ message: t("optionsSaveFailed"), tone: "error" });
     }
   };
 
@@ -55,9 +68,29 @@ export function ApiKeySection({
     try {
       await removeApiKey(provider);
       await onChange(undefined);
-      setNotice({ key: "optionsDeleted", error: false });
+      setNotice({ message: t("optionsDeleted"), tone: "success" });
     } catch {
-      setNotice({ key: "optionsSaveFailed", error: true });
+      setNotice({ message: t("optionsSaveFailed"), tone: "error" });
+    }
+  };
+
+  /** 接続テスト（Models API でキーを検証する。ユーザーの操作時のみ送信する） */
+  const test = async () => {
+    setTesting(true);
+    setNotice({ message: t("optionsTesting"), tone: "info" });
+    try {
+      const apiKey = await getApiKey(provider);
+      if (apiKey === undefined) {
+        setNotice({ message: t("errorApiKeyMissing"), tone: "error" });
+        return;
+      }
+      await PROVIDERS[provider].verifyKey(apiKey);
+      setNotice({ message: t("optionsConnectionOk"), tone: "success" });
+    } catch (error) {
+      const kind = error instanceof ProviderError ? error.kind : "unknown";
+      setNotice({ message: t(PROVIDER_ERROR_MESSAGES[kind]), tone: "error" });
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -81,36 +114,32 @@ export function ApiKeySection({
           value={input}
           onChange={(event) => setInput(event.target.value)}
           placeholder={PLACEHOLDERS[provider]}
-          className="rounded-md border border-neutral-300 bg-transparent px-3 py-1.5 font-mono text-sm dark:border-neutral-600"
+          className={`${FIELD} font-mono`}
         />
-        <div className="flex gap-2">
-          <button
-            type="submit"
-            className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm text-white hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
-          >
+        <div className="flex flex-wrap gap-2">
+          <button type="submit" className={PRIMARY_BUTTON}>
             {t("optionsSave")}
           </button>
           {stored && (
-            <button
-              type="button"
-              onClick={() => void remove()}
-              className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-600 dark:hover:bg-neutral-800"
-            >
-              {t("optionsDelete")}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => void test()}
+                disabled={testing}
+                className={SECONDARY_BUTTON}
+              >
+                {t("optionsTestConnection")}
+              </button>
+              <button type="button" onClick={() => void remove()} className={SECONDARY_BUTTON}>
+                {t("optionsDelete")}
+              </button>
+            </>
           )}
         </div>
       </form>
-      <p className="text-neutral-600 text-xs dark:text-neutral-400">
-        {t("optionsStorageNote", PROVIDERS[provider].displayName)}
-      </p>
-      <p
-        role="status"
-        aria-live="polite"
-        className={`text-sm ${notice?.error ? "text-red-700 dark:text-red-400" : "text-green-700 dark:text-green-400"}`}
-      >
-        {notice && t(notice.key)}
-      </p>
+      <p className={HINT}>{t("optionsStorageNote", PROVIDERS[provider].displayName)}</p>
+      <StatusMessage notice={notice} />
+      {children}
     </section>
   );
 }

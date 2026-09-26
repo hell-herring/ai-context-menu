@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { browser } from "wxt/browser";
-import { isExcludedJob, JobReceiver } from "../../lib/job/receive";
+import { isExcludedJob, JobReceiver, needsConfirmation } from "../../lib/job/receive";
 import { buildPrompt, describeOutputLanguage } from "../../lib/prompt/build";
+import { effectiveMaxOutputTokens } from "../../lib/providers/limits";
 import { PROVIDERS } from "../../lib/providers/registry";
 import { resolveProvider } from "../../lib/providers/select";
 import {
@@ -122,7 +123,8 @@ export function useSummary() {
         const events = PROVIDERS[provider].stream(apiKey, {
           ...prompt,
           model,
-          maxOutputTokens: settings.maxOutputTokens,
+          // 選択モデルの出力上限が分かる場合はそれを超えない（docs/spec.md §3.6）
+          maxOutputTokens: effectiveMaxOutputTokens(settings, provider),
           signal: controller.signal,
         });
         for await (const event of events) {
@@ -154,12 +156,24 @@ export function useSummary() {
   );
 
   const receive = useCallback(
-    (job: Job) => {
+    async (job: Job) => {
       cancelRun();
+      const run = runRef.current;
       if (job.kind === "error") {
         setState({ kind: "jobError", error: job.error });
-      } else if (job.source.oversize) {
-        // 上限超過・メタデータ短縮は黙って送らず、必ずユーザーに確認する
+        return;
+      }
+      // 設定を読めなければ確認する側に倒す
+      const mode = await getCoreSettings().then(
+        (settings) => settings.confirmBeforeSend,
+        () => "always" as const,
+      );
+      // 設定を読む間に次のジョブを受け取っていたら何もしない
+      if (runRef.current !== run) {
+        return;
+      }
+      // 上限超過・メタデータ短縮は設定に関わらず、黙って送らずに確認する
+      if (needsConfirmation(job, mode)) {
         setState({ kind: "summary", job, target: undefined, phase: { kind: "confirm" }, text: "" });
       } else {
         void send(job);
@@ -186,7 +200,7 @@ export function useSummary() {
         // 処理しないジョブも含め、読んだジョブは削除してパネルを開き直しても再送しないようにする
         await removeJob(windowId);
         if (decision === "accept" && !disposed) {
-          receive(job);
+          await receive(job);
         }
       };
       // 取りこぼさないよう、監視を始めてから既存のジョブを読む

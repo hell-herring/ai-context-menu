@@ -12,6 +12,8 @@ const EXCLUDED_DOMAINS_KEY = "settings.excludedDomains";
 export const DEFAULT_SETTINGS: CoreSettings = {
   version: 1,
   models: { ...DEFAULT_MODELS },
+  modelLimits: {},
+  confirmBeforeSend: "oversize",
   outputLanguage: "browser",
   maxInputChars: 50_000,
   maxOutputTokens: 8_000,
@@ -24,12 +26,28 @@ export async function getCoreSettings(): Promise<CoreSettings> {
   return parsed.success ? parsed.data : DEFAULT_SETTINGS;
 }
 
-/** 設定の一部を更新する。検証してから保存する（容量超過は SyncQuotaError） */
-export async function updateCoreSettings(
-  patch: Partial<Omit<CoreSettings, "version">>,
-): Promise<void> {
-  const value = CoreSettingsSchema.parse({ ...(await getCoreSettings()), ...patch });
-  await setSyncItem(CORE_SETTINGS_KEY, value);
+export type CoreSettingsPatch = Partial<Omit<CoreSettings, "version">>;
+
+/** 同じページ内の設定の書き込みを 1 件ずつ行うキュー（読み込み〜書き込みの間に他の更新が割り込まないように） */
+let coreSettingsQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * 設定の一部を更新し、保存した値を返す。検証してから保存する（容量超過は SyncQuotaError）。
+ * 現在の値から更新内容を決める場合は関数を渡す（最新の値で呼ばれる。例外を投げれば保存しない）。
+ */
+export function updateCoreSettings(
+  patch: CoreSettingsPatch | ((current: CoreSettings) => CoreSettingsPatch),
+): Promise<CoreSettings> {
+  const task = coreSettingsQueue.then(async () => {
+    const current = await getCoreSettings();
+    const changes = typeof patch === "function" ? patch(current) : patch;
+    const value = CoreSettingsSchema.parse({ ...current, ...changes });
+    await setSyncItem(CORE_SETTINGS_KEY, value);
+    return value;
+  });
+  // 1 件の失敗で後続の更新が止まらないようにする（失敗は呼び出し元に返す）
+  coreSettingsQueue = task.catch(() => {});
+  return task;
 }
 
 /** 読み出し時は壊れた値でも解釈できる項目を残す（除外が黙って無効になるのを避ける） */

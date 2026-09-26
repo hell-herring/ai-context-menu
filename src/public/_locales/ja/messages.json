@@ -263,5 +263,153 @@
   },
   "optionsSyncTotalQuota": {
     "message": "同期される設定の合計容量を超えています。不要な設定を減らしてください"
+  },
+  "confirmTitle": {
+    "message": "この内容を AI に送信しますか？"
+  },
+  "buttonSend": {
+    "message": "送信"
+  },
+  "optionsTestConnection": {
+    "message": "接続テスト"
+  },
+  "optionsTesting": {
+    "message": "接続を確認しています…"
+  },
+  "optionsConnectionOk": {
+    "message": "接続できました"
+  },
+  "optionsModelLabel": {
+    "message": "モデル"
+  },
+  "optionsModelDefault": {
+    "message": "既定: $MODEL$。一覧にないモデル名も入力できます。",
+    "placeholders": {
+      "model": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsModelFetch": {
+    "message": "モデル一覧を取得"
+  },
+  "optionsModelFetching": {
+    "message": "モデル一覧を取得しています…"
+  },
+  "optionsModelFetched": {
+    "message": "$COUNT$ 件のモデルを取得しました",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsModelNeedsKey": {
+    "message": "モデル一覧の取得には API キーが必要です"
+  },
+  "optionsModelInvalid": {
+    "message": "モデル名を入力してください（200 文字以内）"
+  },
+  "optionsModelNotInList": {
+    "message": "保存しました。ただし「$MODEL$」は利用できるモデルの一覧にありません。モデル名を確認してください",
+    "placeholders": {
+      "model": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsModelUnverified": {
+    "message": "保存しました。モデル一覧を取得できなかったため、利用できるモデルかは確認していません"
+  },
+  "optionsModelOutputCapped": {
+    "message": "保存しました。このモデルの出力上限は $LIMIT$ トークンのため、最大出力トークンはこの値までに制限されます",
+    "placeholders": {
+      "limit": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsGeneralHeading": {
+    "message": "要約の設定"
+  },
+  "optionsOutputLanguageLabel": {
+    "message": "出力言語"
+  },
+  "optionsOutputLanguageBrowser": {
+    "message": "ブラウザの言語"
+  },
+  "optionsOutputLanguageJa": {
+    "message": "日本語"
+  },
+  "optionsOutputLanguageEn": {
+    "message": "英語"
+  },
+  "optionsOutputLanguageSource": {
+    "message": "原文と同じ"
+  },
+  "optionsMaxInputCharsLabel": {
+    "message": "最大入力文字数"
+  },
+  "optionsMaxInputCharsHint": {
+    "message": "$MIN$〜$MAX$。これを超える本文は、送信する前に確認します（黙って切り詰めません）。",
+    "placeholders": {
+      "min": {
+        "content": "$1"
+      },
+      "max": {
+        "content": "$2"
+      }
+    }
+  },
+  "optionsMaxOutputTokensLabel": {
+    "message": "最大出力トークン"
+  },
+  "optionsMaxOutputTokensHint": {
+    "message": "$MIN$〜$MAX$。選択したモデルの出力上限を超える値は保存できません。",
+    "placeholders": {
+      "min": {
+        "content": "$1"
+      },
+      "max": {
+        "content": "$2"
+      }
+    }
+  },
+  "optionsConfirmLabel": {
+    "message": "送信前に確認"
+  },
+  "optionsConfirmAlways": {
+    "message": "常に"
+  },
+  "optionsConfirmOversize": {
+    "message": "上限超過時のみ"
+  },
+  "optionsConfirmNever": {
+    "message": "しない（上限超過時は確認します）"
+  },
+  "optionsRangeError": {
+    "message": "$LABEL$は $MIN$〜$MAX$ の整数で入力してください",
+    "placeholders": {
+      "label": {
+        "content": "$1"
+      },
+      "min": {
+        "content": "$2"
+      },
+      "max": {
+        "content": "$3"
+      }
+    }
+  },
+  "optionsOutputLimitExceeded": {
+    "message": "最大出力トークンが $MODEL$ の出力上限（$LIMIT$）を超えています",
+    "placeholders": {
+      "model": {
+        "content": "$1"
+      },
+      "limit": {
+        "content": "$2"
+      }
+    }
   }
 }

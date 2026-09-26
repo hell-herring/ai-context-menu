@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ContentJob, Job } from "../storage/schema";
-import { isExcludedJob, JOB_MAX_AGE_MS, JobReceiver } from "./receive";
+import { isExcludedJob, JOB_MAX_AGE_MS, JobReceiver, needsConfirmation } from "./receive";
 
 function job(overrides: Partial<Job> & Pick<Job, "id" | "seq" | "createdAt">): Job {
   return {
@@ -41,31 +41,31 @@ describe("JobReceiver", () => {
   });
 });
 
-describe("isExcludedJob", () => {
-  const base: ContentJob = {
-    id: "a",
-    windowId: 1,
-    seq: 1,
-    createdAt: 0,
-    presetId: "summary",
-    pageUrl: "https://news.example/",
-    hostnames: ["news.example"],
-    kind: "content",
-    source: {
-      type: "page",
-      method: "text",
-      title: "t",
-      displayUrl: "https://news.example/",
-      providerUrl: "https://news.example/",
-      hostname: "news.example",
-      text: "本文",
-      originalLength: 2,
-      inputLimit: 50_000,
-      oversize: false,
-      oversizeReasons: [],
-    },
-  };
+const base: ContentJob = {
+  id: "a",
+  windowId: 1,
+  seq: 1,
+  createdAt: 0,
+  presetId: "summary",
+  pageUrl: "https://news.example/",
+  hostnames: ["news.example"],
+  kind: "content",
+  source: {
+    type: "page",
+    method: "text",
+    title: "t",
+    displayUrl: "https://news.example/",
+    providerUrl: "https://news.example/",
+    hostname: "news.example",
+    text: "本文",
+    originalLength: 2,
+    inputLimit: 50_000,
+    oversize: false,
+    oversizeReasons: [],
+  },
+};
 
+describe("isExcludedJob", () => {
   it("一致しなければ除外しない", () => {
     expect(isExcludedJob(base, ["bank.example"])).toBe(false);
   });
@@ -92,5 +92,21 @@ describe("isExcludedJob", () => {
     expect(isExcludedJob({ ...base, frameUrl: "https://bank.example/" }, ["bank.example"])).toBe(
       true,
     );
+  });
+});
+
+describe("needsConfirmation", () => {
+  const oversized: ContentJob = { ...base, source: { ...base.source, oversize: true } };
+
+  it("上限超過のジョブは設定に関わらず確認する", () => {
+    expect(needsConfirmation(oversized, "never")).toBe(true);
+    expect(needsConfirmation(oversized, "oversize")).toBe(true);
+    expect(needsConfirmation(oversized, "always")).toBe(true);
+  });
+
+  it("上限内のジョブは「常に」のときだけ確認する", () => {
+    expect(needsConfirmation(base, "always")).toBe(true);
+    expect(needsConfirmation(base, "oversize")).toBe(false);
+    expect(needsConfirmation(base, "never")).toBe(false);
   });
 });

@@ -263,5 +263,153 @@
   },
   "optionsSyncTotalQuota": {
     "message": "Synced settings exceed the total storage limit. Remove settings you no longer need"
+  },
+  "confirmTitle": {
+    "message": "Send this content to the AI?"
+  },
+  "buttonSend": {
+    "message": "Send"
+  },
+  "optionsTestConnection": {
+    "message": "Test connection"
+  },
+  "optionsTesting": {
+    "message": "Checking the connection…"
+  },
+  "optionsConnectionOk": {
+    "message": "Connected successfully"
+  },
+  "optionsModelLabel": {
+    "message": "Model"
+  },
+  "optionsModelDefault": {
+    "message": "Default: $MODEL$. You can also enter a model name that is not in the list.",
+    "placeholders": {
+      "model": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsModelFetch": {
+    "message": "Load model list"
+  },
+  "optionsModelFetching": {
+    "message": "Loading the model list…"
+  },
+  "optionsModelFetched": {
+    "message": "Loaded $COUNT$ models",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsModelNeedsKey": {
+    "message": "An API key is required to load the model list"
+  },
+  "optionsModelInvalid": {
+    "message": "Enter a model name (up to 200 characters)"
+  },
+  "optionsModelNotInList": {
+    "message": "Saved, but \"$MODEL$\" is not in the list of available models. Please check the model name",
+    "placeholders": {
+      "model": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsModelUnverified": {
+    "message": "Saved. The model list could not be loaded, so the model has not been verified"
+  },
+  "optionsModelOutputCapped": {
+    "message": "Saved. This model can output up to $LIMIT$ tokens, so the maximum output tokens will be limited to this value",
+    "placeholders": {
+      "limit": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsGeneralHeading": {
+    "message": "Summary settings"
+  },
+  "optionsOutputLanguageLabel": {
+    "message": "Output language"
+  },
+  "optionsOutputLanguageBrowser": {
+    "message": "Browser language"
+  },
+  "optionsOutputLanguageJa": {
+    "message": "Japanese"
+  },
+  "optionsOutputLanguageEn": {
+    "message": "English"
+  },
+  "optionsOutputLanguageSource": {
+    "message": "Same as the source"
+  },
+  "optionsMaxInputCharsLabel": {
+    "message": "Maximum input characters"
+  },
+  "optionsMaxInputCharsHint": {
+    "message": "$MIN$–$MAX$. If the content is longer, you will be asked before anything is sent (it is never truncated silently).",
+    "placeholders": {
+      "min": {
+        "content": "$1"
+      },
+      "max": {
+        "content": "$2"
+      }
+    }
+  },
+  "optionsMaxOutputTokensLabel": {
+    "message": "Maximum output tokens"
+  },
+  "optionsMaxOutputTokensHint": {
+    "message": "$MIN$–$MAX$. Values above the output limit of the selected models cannot be saved.",
+    "placeholders": {
+      "min": {
+        "content": "$1"
+      },
+      "max": {
+        "content": "$2"
+      }
+    }
+  },
+  "optionsConfirmLabel": {
+    "message": "Confirm before sending"
+  },
+  "optionsConfirmAlways": {
+    "message": "Always"
+  },
+  "optionsConfirmOversize": {
+    "message": "Only when over the limit"
+  },
+  "optionsConfirmNever": {
+    "message": "Never (still asks when over the limit)"
+  },
+  "optionsRangeError": {
+    "message": "$LABEL$ must be an integer from $MIN$ to $MAX$",
+    "placeholders": {
+      "label": {
+        "content": "$1"
+      },
+      "min": {
+        "content": "$2"
+      },
+      "max": {
+        "content": "$3"
+      }
+    }
+  },
+  "optionsOutputLimitExceeded": {
+    "message": "The maximum output tokens exceed the output limit of $MODEL$ ($LIMIT$)",
+    "placeholders": {
+      "model": {
+        "content": "$1"
+      },
+      "limit": {
+        "content": "$2"
+      }
+    }
   }
 }

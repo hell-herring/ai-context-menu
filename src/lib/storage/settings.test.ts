@@ -25,7 +25,7 @@ describe("getCoreSettings", () => {
     expect(await getCoreSettings()).toEqual(settings);
   });
 
-  it("M1 で保存された値（OpenAI のモデルなし）は既定のモデルで補う", async () => {
+  it("M1 で保存された値（OpenAI のモデル・上限・送信前確認なし）は既定値で補う", async () => {
     const m1 = {
       version: 1,
       models: { anthropic: "claude-sonnet-5" },
@@ -37,6 +37,8 @@ describe("getCoreSettings", () => {
     expect(await getCoreSettings()).toEqual({
       ...m1,
       models: { anthropic: "claude-sonnet-5", openai: DEFAULT_SETTINGS.models.openai },
+      modelLimits: {},
+      confirmBeforeSend: "oversize",
     });
   });
 
@@ -45,6 +47,8 @@ describe("getCoreSettings", () => {
     { ...DEFAULT_SETTINGS, maxOutputTokens: 100_000 },
     { ...DEFAULT_SETTINGS, maxInputChars: 999 },
     { ...DEFAULT_SETTINGS, version: 2 },
+    { ...DEFAULT_SETTINGS, confirmBeforeSend: "sometimes" },
+    { ...DEFAULT_SETTINGS, modelLimits: { anthropic: { model: "x", maxOutputTokens: -1 } } },
     "broken",
   ])("範囲外・不正な値 %j は既定値にする", async (value) => {
     await browser.storage.sync.set({ "settings.core": value });
@@ -62,6 +66,32 @@ describe("updateCoreSettings", () => {
       defaultProvider: "openai",
       maxInputChars: 10_000,
     });
+  });
+
+  it("モデルの上限と送信前確認を保存する", async () => {
+    const modelLimits = { anthropic: { model: "claude-opus-5", maxOutputTokens: 128_000 } };
+    await updateCoreSettings({ modelLimits, confirmBeforeSend: "always" });
+    expect(await getCoreSettings()).toMatchObject({ modelLimits, confirmBeforeSend: "always" });
+  });
+
+  it("関数を渡すと最新の値から更新内容を決め、続けて呼んでも更新を失わない", async () => {
+    const saves = [
+      updateCoreSettings((current) => ({ models: { ...current.models, anthropic: "a" } })),
+      updateCoreSettings((current) => ({ models: { ...current.models, openai: "b" } })),
+    ];
+    const [, last] = await Promise.all(saves);
+    expect(last?.models).toEqual({ anthropic: "a", openai: "b" });
+    expect((await getCoreSettings()).models).toEqual({ anthropic: "a", openai: "b" });
+  });
+
+  it("関数が例外を投げたら保存せず、後続の更新は続ける", async () => {
+    await expect(
+      updateCoreSettings(() => {
+        throw new Error("rejected");
+      }),
+    ).rejects.toThrow("rejected");
+    await updateCoreSettings({ maxInputChars: 10_000 });
+    expect(await getCoreSettings()).toEqual({ ...DEFAULT_SETTINGS, maxInputChars: 10_000 });
   });
 
   it("不正な値は保存しない", async () => {

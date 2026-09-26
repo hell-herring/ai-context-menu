@@ -305,9 +305,14 @@ describe("OpenAIProvider.listModels / verifyKey", () => {
         "whisper-1",
       ]),
     );
+    const list = await createOpenAIProvider({ fetch: fetchMock }).listModels(DUMMY_KEY);
+    expect(list.map((model) => model.id)).toEqual(["gpt-6-luna", "gpt-6-sol"]);
+  });
+
+  it("既知値のないモデルの上限は undefined", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => models(["gpt-6-sol"]));
     expect(await createOpenAIProvider({ fetch: fetchMock }).listModels(DUMMY_KEY)).toEqual([
-      "gpt-6-luna",
-      "gpt-6-sol",
+      { id: "gpt-6-sol", maxInputTokens: undefined, maxOutputTokens: undefined },
     ]);
   });
 
