@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useId, useState } from "react";
+import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
 import { type MessageKey, t } from "../../lib/i18n";
 import { PROVIDER_ERROR_MESSAGES } from "../../lib/providers/error-messages";
 import { PROVIDERS } from "../../lib/providers/registry";
@@ -45,54 +45,75 @@ export function ApiKeySection({
   const inputId = useId();
   const [input, setInput] = useState("");
   const [notice, setNotice] = useState<Notice | undefined>(undefined);
-  const [testing, setTesting] = useState(false);
+  /**
+   * 保存・削除・接続テストのいずれかを実行中。実行中は他の操作を受け付けない
+   * （接続テストの途中でキーが差し替わり、古いキーの結果を新しいキーの結果として表示しないように）
+   */
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
 
-  const save = async (event: FormEvent) => {
-    event.preventDefault();
-    const apiKey = normalizeApiKey(input);
-    if (apiKey === undefined) {
-      setNotice({ message: t("optionsInvalidKey"), tone: "error" });
+  /** 操作を 1 つずつ実行する（ボタンの無効化に加え、Enter キーでの送信なども弾く） */
+  const exclusive = async (operation: () => Promise<void>) => {
+    if (busyRef.current) {
       return;
     }
+    busyRef.current = true;
+    setBusy(true);
     try {
-      await setApiKey(provider, apiKey);
-      setInput("");
-      await onChange(maskApiKey(apiKey));
-      setNotice({ message: t("optionsSaved"), tone: "success" });
-    } catch {
-      setNotice({ message: t("optionsSaveFailed"), tone: "error" });
+      await operation();
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
     }
   };
 
-  const remove = async () => {
-    try {
-      await removeApiKey(provider);
-      await onChange(undefined);
-      setNotice({ message: t("optionsDeleted"), tone: "success" });
-    } catch {
-      setNotice({ message: t("optionsSaveFailed"), tone: "error" });
-    }
-  };
-
-  /** 接続テスト（Models API でキーを検証する。ユーザーの操作時のみ送信する） */
-  const test = async () => {
-    setTesting(true);
-    setNotice({ message: t("optionsTesting"), tone: "info" });
-    try {
-      const apiKey = await getApiKey(provider);
+  const save = (event: FormEvent) => {
+    event.preventDefault();
+    return exclusive(async () => {
+      const apiKey = normalizeApiKey(input);
       if (apiKey === undefined) {
-        setNotice({ message: t("errorApiKeyMissing"), tone: "error" });
+        setNotice({ message: t("optionsInvalidKey"), tone: "error" });
         return;
       }
-      await PROVIDERS[provider].verifyKey(apiKey);
-      setNotice({ message: t("optionsConnectionOk"), tone: "success" });
-    } catch (error) {
-      const kind = error instanceof ProviderError ? error.kind : "unknown";
-      setNotice({ message: t(PROVIDER_ERROR_MESSAGES[kind]), tone: "error" });
-    } finally {
-      setTesting(false);
-    }
+      try {
+        await setApiKey(provider, apiKey);
+        setInput("");
+        await onChange(maskApiKey(apiKey));
+        setNotice({ message: t("optionsSaved"), tone: "success" });
+      } catch {
+        setNotice({ message: t("optionsSaveFailed"), tone: "error" });
+      }
+    });
   };
+
+  const remove = () =>
+    exclusive(async () => {
+      try {
+        await removeApiKey(provider);
+        await onChange(undefined);
+        setNotice({ message: t("optionsDeleted"), tone: "success" });
+      } catch {
+        setNotice({ message: t("optionsSaveFailed"), tone: "error" });
+      }
+    });
+
+  /** 接続テスト（Models API でキーを検証する。ユーザーの操作時のみ送信する） */
+  const test = () =>
+    exclusive(async () => {
+      setNotice({ message: t("optionsTesting"), tone: "info" });
+      try {
+        const apiKey = await getApiKey(provider);
+        if (apiKey === undefined) {
+          setNotice({ message: t("errorApiKeyMissing"), tone: "error" });
+          return;
+        }
+        await PROVIDERS[provider].verifyKey(apiKey);
+        setNotice({ message: t("optionsConnectionOk"), tone: "success" });
+      } catch (error) {
+        const kind = error instanceof ProviderError ? error.kind : "unknown";
+        setNotice({ message: t(PROVIDER_ERROR_MESSAGES[kind]), tone: "error" });
+      }
+    });
 
   return (
     <section className="flex flex-col gap-3" aria-labelledby={headingId}>
@@ -117,7 +138,7 @@ export function ApiKeySection({
           className={`${FIELD} font-mono`}
         />
         <div className="flex flex-wrap gap-2">
-          <button type="submit" className={PRIMARY_BUTTON}>
+          <button type="submit" disabled={busy} className={PRIMARY_BUTTON}>
             {t("optionsSave")}
           </button>
           {stored && (
@@ -125,12 +146,17 @@ export function ApiKeySection({
               <button
                 type="button"
                 onClick={() => void test()}
-                disabled={testing}
+                disabled={busy}
                 className={SECONDARY_BUTTON}
               >
                 {t("optionsTestConnection")}
               </button>
-              <button type="button" onClick={() => void remove()} className={SECONDARY_BUTTON}>
+              <button
+                type="button"
+                onClick={() => void remove()}
+                disabled={busy}
+                className={SECONDARY_BUTTON}
+              >
                 {t("optionsDelete")}
               </button>
             </>

@@ -17,6 +17,8 @@ import { readJob, removeJob, watchJob } from "../../lib/storage/session";
 import { getCoreSettings, getExcludedDomains } from "../../lib/storage/settings";
 
 export type Phase =
+  /** 受け取ったジョブの送信前の判定中（設定の読み込み中） */
+  | { kind: "preparing" }
   /** 送信前の確認。`overflow` は選択中のモデルの入力上限に収まらない場合の内訳 */
   | { kind: "confirm"; overflow: ModelOverflow | undefined }
   | { kind: "cancelled" }
@@ -81,6 +83,8 @@ export function useSummary() {
   const [state, setState] = useState<PanelState>({ kind: "idle" });
   const controllerRef = useRef<AbortController | undefined>(undefined);
   const runRef = useRef(0);
+  /** 最後に受け取ったジョブの ID。前のジョブの表示に対する操作（確認・再生成）を受け付けないために使う */
+  const latestJobIdRef = useRef<string | undefined>(undefined);
 
   /** 進行中のリクエストを中断し、以降の古い更新を無視させる */
   const cancelRun = useCallback(() => {
@@ -196,10 +200,21 @@ export function useSummary() {
     async (job: Job) => {
       cancelRun();
       const run = runRef.current;
+      latestJobIdRef.current = job.id;
       if (job.kind === "error") {
         setState({ kind: "jobError", error: job.error });
         return;
       }
+      // 設定を読む前に表示を新しいジョブに置き換え、前のジョブの確認・再生成ボタンを押せないようにする
+      setState({
+        kind: "summary",
+        job,
+        target: undefined,
+        phase: { kind: "preparing" },
+        text: "",
+        fitToModel: false,
+        fittedChars: undefined,
+      });
       const [settings, apiKeys] = await Promise.all([
         getCoreSettings().catch(() => undefined),
         getApiKeys().catch(() => undefined),
@@ -276,7 +291,9 @@ export function useSummary() {
     };
   }, [receive, cancelRun]);
 
-  const current = state.kind === "summary" ? state : undefined;
+  // 最後に受け取ったジョブの表示に対する操作だけを受け付ける
+  const current =
+    state.kind === "summary" && state.job.id === latestJobIdRef.current ? state : undefined;
 
   return {
     state,
@@ -296,7 +313,7 @@ export function useSummary() {
     }, [current]),
     stop: useCallback(() => controllerRef.current?.abort(), []),
     regenerate: useCallback(() => {
-      if (current) {
+      if (current && current.phase.kind !== "preparing") {
         void send(current.job, current.fitToModel);
       }
     }, [current, send]),
