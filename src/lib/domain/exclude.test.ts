@@ -60,6 +60,8 @@ describe("urlHostname", () => {
     ["https://例え.jp/", "xn--r8jz45g.jp"],
     ["blob:https://bank.example/0000-1111", "bank.example"],
     ["view-source:https://bank.example/", "bank.example"],
+    ["filesystem:https://bank.example/temporary/doc.html", "bank.example"],
+    ["VIEW-SOURCE:https://bank.example/", "bank.example"],
     ["file:///Users/name/doc.html", undefined],
     ["about:blank", undefined],
     ["chrome://settings", "settings"],

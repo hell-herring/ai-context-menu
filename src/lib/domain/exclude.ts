@@ -11,6 +11,9 @@ const INVALID_HOST_CHARS = /[\s/\\:?#@*%[\]]/;
 
 const IPV4 = /^\d+\.\d+\.\d+\.\d+$/;
 
+/** 別の URL を埋め込むスキーム（オリジンが "null" になるため、埋め込まれた URL のホストで判定する） */
+const WRAPPER_PROTOCOLS = new Set(["view-source:", "filesystem:"]);
+
 /**
  * 入力されたパターンを正規化する（小文字化・IDN の Punycode 化・末尾のドットの除去）。不正なら undefined。
  * `https://example.com/path` のような URL を貼り付けた場合はホスト名を取り出す。
@@ -60,7 +63,7 @@ export function parseDomainList(text: string): { domains: string[]; invalid: str
 }
 
 /**
- * URL のホスト名。`blob:` 等は内側の URL のオリジン、`view-source:` は表示元の URL で判定する。
+ * URL のホスト名。`blob:` は内側の URL のオリジン、`view-source:` / `filesystem:` は埋め込まれた URL で判定する。
  * ホスト名を持たない URL（`file:` / `about:blank` 等）や不正な URL は undefined。
  */
 export function urlHostname(url: string): string | undefined {
@@ -70,8 +73,8 @@ export function urlHostname(url: string): string | undefined {
   } catch {
     return undefined;
   }
-  if (parsed.protocol === "view-source:") {
-    return urlHostname(url.slice("view-source:".length));
+  if (WRAPPER_PROTOCOLS.has(parsed.protocol)) {
+    return urlHostname(url.slice(parsed.protocol.length));
   }
   const origin = parsed.origin;
   const hostname = origin === "null" ? parsed.hostname : parseHostname(origin);
