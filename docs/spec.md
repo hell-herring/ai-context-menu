@@ -75,7 +75,7 @@ AI Context Menu
 | 対象 | 取得方法 | 補足 |
 |---|---|---|
 | 選択テキスト | `scripting.executeScript` で `window.getSelection().toString()`（クリックされた `frameId` を指定） | 改行を保持するため。失敗時は `info.selectionText` にフォールバック（PDF ビューア等）。**フォーム内の選択は拒否**（下記） |
-| ページ本文 | `scripting.executeScript` で拡張同梱の抽出スクリプトを注入し、`@mozilla/readability` で本文抽出 | `document.cloneNode(true)` に対して実行し元 DOM を変更しない。**抽出前にクローンからフォーム部品（`input` / `textarea` / `select` / `form`）と `contenteditable` の要素を削除**し、メール作成欄や CMS エディタの下書きを含めない。**非表示要素も削除する**: クローンでは計算済みスタイルが失われるため、先にライブ DOM を読み取り専用で走査して `getComputedStyle` で非表示（`display: none` / `visibility: hidden` / `hidden` 属性 / `content-visibility: hidden` 等）の要素を特定し、クローンを並行走査して対応ノードを削除する（ライブ DOM は変更しない）。Readability 失敗時は同じ除去済みクローンの本文テキストにフォールバック |
+| ページ本文 | `scripting.executeScript` で拡張同梱の抽出スクリプトを注入し、`@mozilla/readability` で本文抽出 | `document.cloneNode(true)` に対して実行し元 DOM を変更しない。**抽出前にクローンから値を持つフォーム部品（`input` / `textarea` / `select` / `option`）と `contenteditable` の要素を削除**し（`form` 要素自体は残す。ページ全体を `<form>` で囲む ASP.NET 等のページで本文が消えないように）、メール作成欄や CMS エディタの下書きを含めない。**非表示要素も削除する**: クローンでは計算済みスタイルが失われるため、先にライブ DOM を読み取り専用で走査して `getComputedStyle` で非表示（`display: none` / `visibility: hidden` / `hidden` 属性 / `content-visibility: hidden` 等）の要素を特定し、クローンを並行走査して対応ノードを削除する（ライブ DOM は変更しない）。Readability 失敗時は同じ除去済みクローンの本文テキストにフォールバック |
 
 - **フォーム入力値を送らない**: `info.editable === true`（`<input>` / `<textarea>` / `contenteditable` 内の選択）の場合は取得せず「入力欄内のテキストは要約できません」と表示する。注入スクリプト側でも `document.activeElement` がフォーム部品・編集可能要素なら空を返す。`info.selectionText` へのフォールバックは `editable` でない場合に限る。
 - 権限は `activeTab`（クリック時に一時付与）+ `scripting`。`<all_urls>` の常時注入はしない。
