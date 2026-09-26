@@ -26,6 +26,7 @@ import {
   type StopReason,
   type Usage,
 } from "../../lib/providers/types";
+import { createRecentSummary, saveRecentSummary } from "../../lib/storage/recent";
 import type { ContentJob, CoreSettings, Job, JobErrorCode } from "../../lib/storage/schema";
 import { getApiKeys, watchApiKeys } from "../../lib/storage/secrets";
 import { readJob, removeJob, watchJob } from "../../lib/storage/session";
@@ -246,6 +247,28 @@ export function useSummary() {
               text,
               phase: { kind: "done", stopReason: event.stopReason, usage: event.usage },
             });
+            // 完了した結果だけを最近の要約に残す（再生成したら同じジョブの項目を置き換える）
+            if (text !== "" && runRef.current === run) {
+              saveRecentSummary(
+                createRecentSummary(
+                  {
+                    id: job.id,
+                    createdAt: Date.now(),
+                    sourceType: job.source.type,
+                    title: job.source.title,
+                    displayUrl: job.source.displayUrl,
+                    provider,
+                    model,
+                    presetId,
+                    stopReason: event.stopReason,
+                  },
+                  text,
+                ),
+              ).catch((error: unknown) => {
+                // 保存できなくても表示中の結果には影響しない（結果の内容はログに出さない）
+                console.error("Failed to save the recent summary", error);
+              });
+            }
           }
         }
       } catch (error) {

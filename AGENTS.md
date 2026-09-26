@@ -12,7 +12,7 @@ AI コーディングエージェント（Claude Code, Codex, Copilot 等）向�
 - 対応プロバイダは Anthropic / OpenAI の公式 API（Gemini は Phase 2 で追加予定。MVP では実装しない）。**ローカル LLM・任意エンドポイントは非対応**、Web UI（chatgpt.com 等）への受け渡しも実装しない。
 - **Chrome ウェブストアでは公開しない**（手動インストールで個人利用）。
 
-**現在のフェーズ: M2（MVP）実装中。** 右クリック → 選択テキストまたはページ本文を取得 → Anthropic / OpenAI にストリーミングで要約 → サイドパネルに表示、までが動く。除外ドメイン・設定画面（API キーと接続テスト・モデル・使用する AI・出力言語・上限・送信前確認・除外ドメイン）・モデルのコンテキスト長判定・サイドパネルでのプロバイダ/モデル/プリセット切り替え・E2E テスト（Playwright）に対応済み。最近の要約は M2 の残り。
+**現在のフェーズ: M2（MVP）実装中。** 右クリック → 選択テキストまたはページ本文を取得 → Anthropic / OpenAI にストリーミングで要約 → サイドパネルに表示、までが動く。除外ドメイン・設定画面（API キーと接続テスト・モデル・使用する AI・出力言語・上限・送信前確認・除外ドメイン）・モデルのコンテキスト長判定・サイドパネルでのプロバイダ/モデル/プリセット切り替え・最近の要約・E2E テスト（Playwright）に対応済み。
 
 ## 必読ドキュメント
 
@@ -56,14 +56,14 @@ Node.js は `.node-version`（26）、pnpm は `package.json` の `packageManage
 - `wxt.config.ts` — manifest 定義。**権限はここだけで管理**し、変更したら `tests/build/manifest.test.ts` の期待値も更新する（人間の承認必須）。権限は §2 の一覧のうち、使うマイルストーンで必要になったものだけを追加する（現在: `contextMenus`, `sidePanel`, `activeTab`, `scripting`, `storage` と host `https://api.anthropic.com/*`, `https://api.openai.com/*`）。自動インポートは無効（`imports: false`）なので `browser` 等は明示的に import する。
 - `src/entrypoints/background.ts` — コンテキストメニュー、`sidePanel.open()`、除外判定（M2）、コンテンツ取得、`storage.session` へジョブ書き込み。**短命な処理のみ。**
 - `src/entrypoints/extract.ts` / `extract-selection.ts` / `extract-origins.ts` — `scripting.executeScript` で必要時のみ注入する読み取り専用スクリプト（ページ本文 / 選択テキスト / URL にホスト名がないフレームの実際のオリジン（除外判定用））。main の戻り値が `executeScript` の結果になる。中身は `src/lib/extract/page.ts` / `selection.ts`（注入スクリプトを小さく保つため zod 等は import しない。戻り値の検証は `src/lib/extract/schema.ts` で background 側が行う）。
-- `src/entrypoints/sidepanel/` — ジョブ受信、AI 呼び出し（ストリーミング）、結果表示、送信先（プロバイダ・モデル）とプリセットの切り替え。**API 呼び出しはここで行う**（Service Worker は停止しうるため）。受信・送信の状態管理は `use-summary.ts`。
+- `src/entrypoints/sidepanel/` — ジョブ受信、AI 呼び出し（ストリーミング）、結果表示、送信先（プロバイダ・モデル）とプリセットの切り替え、最近の要約の一覧・表示。**API 呼び出しはここで行う**（Service Worker は停止しうるため）。受信・送信の状態管理は `use-summary.ts`、最近の要約は `use-recent.ts`。
 - `src/entrypoints/options/` — 使用する AI・プロバイダごとの API キー（接続テスト）とモデル・要約の設定（出力言語・上限・送信前確認）・除外ドメイン。モデル一覧・接続テストは Models API をユーザーの操作時にだけ呼ぶ。
 - `src/lib/context-menu.ts` — メニュー定義とクリック処理（`sidePanel.open()` を await 前に呼ぶ規約をここでテストしている）。
 - `src/lib/i18n.ts` — `t(key, substitutions)`。キーは `ja/messages.json` から型付け。置換は messages.json の `placeholders` で定義する。ロケール間のキー一致は `tests/unit/locales.test.ts` で検査。
 - `src/lib/providers/` — `Provider` インターフェイス（`listModels` / `verifyKey` / `stream`）とプロバイダ別アダプタ（`anthropic.ts` / `openai.ts`）。UI は SDK 型に直接依存しない。既定モデルは `defaults.ts` だけで管理し、使用するプロバイダの決定は `select.ts`（設定のプロバイダにキーがなければキーのある最初のもの）。モデルの入出力上限と設定の突き合わせ（リクエスト時の `min(設定値, モデル上限)`・保存時の拒否）は `limits.ts`。
 - `src/lib/prompt/` — プロンプト生成（純粋関数・スナップショットテスト対象）、XML エスケープとエスケープ後の文字数計算、トークン概算とモデルの入力上限に収める切り詰め（`fit.ts`）。
 - `src/lib/job/` — ジョブの組み立て（上限超過・メタデータ短縮の判定、送信用 URL）、クリックからジョブを作る判定（`prepare.ts`。入力欄・選択/本文の振り分け・フォールバック。Chrome API は引数で受け取る）と、サイドパネルでの受信判定（重複・古い・期限切れ）・送信前の判定（`request.ts`: プロンプトの組み立てとモデルのコンテキスト長による判定。受信時・切り替え時・送信直前に使う）・送信先の決定（`target.ts`: 設定の既定とサイドパネルでの切り替え。切り替えはそのジョブだけに効かせ、設定には保存しない）。
-- `src/lib/storage/` — zod スキーマ付きのストレージアクセス（`schema.ts` / `settings.ts` / `secrets.ts` / `session.ts`）。直接 `chrome.storage` を触らずここを経由する。`settings.core` の更新は `updateCoreSettings()`（同じページ内の書き込みを直列化し、関数を渡すと最新の値から更新内容を決める）を通す。`job.<windowId>` への書き込みは `JobWriter`（世代確認・直列キュー）を必ず通す。`storage.sync` への書き込みは `sync-quota.ts` の `setSyncItem()`（UTF-8 バイト数の検査）を通す。
+- `src/lib/storage/` — zod スキーマ付きのストレージアクセス（`schema.ts` / `settings.ts` / `secrets.ts` / `session.ts` / `recent.ts`）。直接 `chrome.storage` を触らずここを経由する。`settings.core` の更新は `updateCoreSettings()`（同じページ内の書き込みを直列化し、関数を渡すと最新の値から更新内容を決める）を通す。`job.<windowId>` への書き込みは `JobWriter`（世代確認・直列キュー・`storage.session` 全体の容量確認）を必ず通す。最近の要約（`recent.<ジョブ ID>`）は `recent.ts`（完了した結果だけ・最大 10 件・送った本文は保存しない）。`storage.sync` への書き込みは `sync-quota.ts` の `setSyncItem()`（UTF-8 バイト数の検査）を通す。
 - `src/lib/domain/` — 除外ドメインのパターン正規化と判定（ページ URL・フレーム URL の両方）。background（取得前）とサイドパネル（プロバイダ呼び出しの直前に毎回）で使う。
 - `src/components/MarkdownView.tsx` — AI 出力の安全な描画（生 HTML 無効・http(s) のリンクのみ・画像はリンクに置換）。
 - `src/testing/` — **E2E 用ビルド専用**のコード（モックプロバイダ、メニューのクリックを再現するフック）。マーカー `__AICM_TEST_ONLY__` を含め、`import.meta.env.MODE === "e2e"` の分岐内の動的 import からだけ読み込む（本番ビルドに入らないことを `test:build` で検査）。E2E 用ビルドの manifest にだけ `http://localhost/*` を追加する（`wxt.config.ts`）。

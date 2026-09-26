@@ -30,7 +30,7 @@ declare const chrome: {
     sendMessage(message: unknown): Promise<{ ok: boolean; error?: string } | undefined>;
   };
   storage: Record<
-    "local" | "sync",
+    "local" | "sync" | "session",
     {
       get(keys: null): Promise<Record<string, unknown>>;
       set(items: Record<string, unknown>): Promise<void>;
@@ -56,7 +56,7 @@ interface WorkerFixtures {
 export interface ExtensionHelpers {
   /** ストレージに直接書き込む（API キー・設定の準備） */
   seed(items: { local?: Record<string, unknown>; sync?: Record<string, unknown> }): Promise<void>;
-  readStorage(area: "local" | "sync"): Promise<Record<string, unknown>>;
+  readStorage(area: "local" | "sync" | "session"): Promise<Record<string, unknown>>;
   /** テスト用ページを開く */
   openPage(pathAndQuery: string): Promise<Page>;
   /** サイドパネルを開く（ネイティブのサイドパネルは操作できないため、同じウィンドウのタブで開く） */

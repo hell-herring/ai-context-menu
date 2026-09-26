@@ -14,7 +14,8 @@ import { estimateTokens } from "../../lib/prompt/tokens";
 import { PROVIDER_ERROR_MESSAGES } from "../../lib/providers/error-messages";
 import { PROVIDERS } from "../../lib/providers/registry";
 import { PROVIDER_IDS, type ProviderId } from "../../lib/providers/types";
-import type { ContentJob, JobErrorCode } from "../../lib/storage/schema";
+import type { ContentJob, JobErrorCode, RecentSummary } from "../../lib/storage/schema";
+import { useRecent } from "./use-recent";
 import {
   type ModelCheck,
   type PanelEnv,
@@ -29,6 +30,7 @@ const JOB_ERROR_MESSAGES = {
   excludedDomain: "errorExcludedDomain",
   emptyContent: "errorEmptyContent",
   tooLarge: "errorTooLarge",
+  tooManyJobs: "errorTooManyJobs",
 } as const satisfies Record<JobErrorCode, MessageKey>;
 
 const PHASE_ERROR_MESSAGES = {
@@ -41,6 +43,25 @@ const numberFormat = new Intl.NumberFormat(browser.i18n.getUILanguage());
 
 function formatNumber(value: number): string {
   return numberFormat.format(value);
+}
+
+const timeFormat = new Intl.DateTimeFormat(browser.i18n.getUILanguage(), {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+const dateTimeFormat = new Intl.DateTimeFormat(browser.i18n.getUILanguage(), {
+  month: "numeric",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+/** 保存時刻。今日なら時刻だけ */
+function formatSavedAt(time: number): string {
+  const date = new Date(time);
+  return date.toDateString() === new Date().toDateString()
+    ? timeFormat.format(date)
+    : dateTimeFormat.format(date);
 }
 
 type SummaryState = Extract<PanelState, { kind: "summary" }>;
@@ -58,25 +79,137 @@ export function App() {
     stop,
     regenerate,
   } = useSummary();
+  const recent = useRecent();
+
+  // 表示中の最近の要約。新しいジョブを受け取ったら、そのジョブの表示に戻す
+  const jobKey: unknown = state.kind === "summary" ? state.job.id : state;
+  const [viewing, setViewing] = useState<{ id: string; jobKey: unknown } | undefined>(undefined);
+  const viewed =
+    viewing && viewing.jobKey === jobKey
+      ? recent.summaries.find((summary) => summary.id === viewing.id)
+      : undefined;
+  // 表示中のジョブの結果は一覧に出さない
+  const listed = recent.summaries.filter(
+    (summary) => state.kind !== "summary" || summary.id !== state.job.id,
+  );
 
   return (
     <main className="flex min-h-screen flex-col gap-3 p-4">
       <Header />
-      {state.kind === "summary" && env && (
-        <TargetPicker
-          state={state}
-          env={env}
-          selected={selected}
-          onProvider={selectProvider}
-          onModel={selectModel}
-          onPreset={selectPreset}
+      {viewed ? (
+        <RecentView summary={viewed} onBack={() => setViewing(undefined)} />
+      ) : (
+        <>
+          {state.kind === "summary" && env && (
+            <TargetPicker
+              state={state}
+              env={env}
+              selected={selected}
+              onProvider={selectProvider}
+              onModel={selectModel}
+              onPreset={selectPreset}
+            />
+          )}
+          <Body state={state} onConfirm={confirm} onCancel={cancel} />
+          {state.kind === "summary" && (
+            <Actions state={state} onStop={stop} onRegenerate={regenerate} />
+          )}
+        </>
+      )}
+      {listed.length > 0 && (
+        <RecentList
+          summaries={listed}
+          viewedId={viewed?.id}
+          onView={(id) => {
+            setViewing({ id, jobKey });
+            window.scrollTo({ top: 0 });
+          }}
+          onClear={recent.clear}
         />
       )}
-      <Body state={state} onConfirm={confirm} onCancel={cancel} />
-      {state.kind === "summary" && (
-        <Actions state={state} onStop={stop} onRegenerate={regenerate} />
-      )}
     </main>
+  );
+}
+
+/**
+ * 最近の要約の一覧（docs/spec.md §3.4。このブラウザを閉じるまで最大 10 件）。
+ * 項目を押すと保存した結果を表示する（再生成はできない）
+ */
+function RecentList({
+  summaries,
+  viewedId,
+  onView,
+  onClear,
+}: {
+  summaries: readonly RecentSummary[];
+  viewedId: string | undefined;
+  onView: (id: string) => void;
+  onClear: () => void;
+}) {
+  return (
+    <details className="mt-auto border-neutral-200 border-t pt-3 text-sm dark:border-neutral-700">
+      <summary className="cursor-pointer font-medium">
+        {t("recentHeading", formatNumber(summaries.length))}
+      </summary>
+      <ul className="mt-2 flex flex-col gap-1">
+        {summaries.map((summary) => (
+          <li key={summary.id}>
+            <button
+              type="button"
+              onClick={() => onView(summary.id)}
+              aria-current={summary.id === viewedId ? "true" : undefined}
+              className="flex w-full flex-col items-start rounded-md px-2 py-1.5 text-left hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-blue-500 aria-[current]:bg-neutral-100 dark:aria-[current]:bg-neutral-800 dark:hover:bg-neutral-800"
+            >
+              <span className="line-clamp-1 w-full">{summary.title || t("sourceUntitled")}</span>
+              <span className="text-neutral-600 text-xs dark:text-neutral-400">
+                {formatSavedAt(summary.createdAt)} · {t(PRESET_MENU_TITLE_KEYS[summary.presetId])}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-neutral-600 text-xs dark:text-neutral-400">{t("recentNote")}</p>
+        <Button onClick={onClear}>{t("recentClear")}</Button>
+      </div>
+    </details>
+  );
+}
+
+/** 保存した最近の要約の表示（読み取り専用） */
+function RecentView({ summary, onBack }: { summary: RecentSummary; onBack: () => void }) {
+  return (
+    <>
+      <div>
+        <Button onClick={onBack}>{t("recentBack")}</Button>
+      </div>
+      <section className="flex flex-col gap-0.5 rounded-md border border-neutral-200 p-3 text-sm dark:border-neutral-700">
+        <p className="line-clamp-2 font-medium">{summary.title || t("sourceUntitled")}</p>
+        <p className="truncate text-neutral-600 text-xs dark:text-neutral-400">
+          {summary.displayUrl}
+        </p>
+        <p className="text-neutral-600 text-xs dark:text-neutral-400">
+          {t(summary.sourceType === "page" ? "sourcePage" : "sourceSelection")} ·{" "}
+          {PROVIDERS[summary.provider].displayName} · {summary.model} ·{" "}
+          {t(PRESET_MENU_TITLE_KEYS[summary.presetId])}
+        </p>
+        <p className="text-neutral-600 text-xs dark:text-neutral-400">
+          {t("recentSavedAt", formatSavedAt(summary.createdAt))}
+        </p>
+      </section>
+      <MarkdownView text={summary.text} />
+      {summary.stopReason !== "end" && (
+        <p className="text-neutral-600 text-xs dark:text-neutral-400">
+          {t(summary.stopReason === "max_tokens" ? "statusMaxTokens" : "statusRefusal")}
+        </p>
+      )}
+      {summary.truncated && (
+        <p className="text-amber-700 text-xs dark:text-amber-400">{t("recentTruncated")}</p>
+      )}
+      <div className="flex flex-wrap gap-2 border-neutral-200 border-t pt-3 dark:border-neutral-700">
+        <CopyButton key={summary.id} text={summary.text} />
+      </div>
+    </>
   );
 }
 

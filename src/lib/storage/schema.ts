@@ -2,7 +2,7 @@ import { z } from "zod";
 import { MAX_EXCLUDED_DOMAINS } from "../domain/exclude";
 import { PRESET_IDS } from "../prompt/presets";
 import { DEFAULT_MODELS } from "../providers/defaults";
-import { PROVIDER_IDS } from "../providers/types";
+import { PROVIDER_IDS, STOP_REASONS } from "../providers/types";
 
 // ストレージに置く値のスキーマ。読み出した値は必ずここで検証してから使う（docs/guardrails.md §5）
 
@@ -125,6 +125,8 @@ export const JOB_ERROR_CODES = [
   "emptyContent",
   /** ジョブが大きすぎて受け渡せない */
   "tooLarge",
+  /** 他のウィンドウの未処理ジョブで storage.session の容量が足りない */
+  "tooManyJobs",
 ] as const;
 
 export type JobErrorCode = (typeof JOB_ERROR_CODES)[number];
@@ -179,3 +181,34 @@ export const JobSchema = z.discriminatedUnion("kind", [
 export type Job = z.infer<typeof JobSchema>;
 
 export type ContentJob = Extract<Job, { kind: "content" }>;
+
+// ---------------------------------------------------------------------------
+// 最近の要約（storage.session `recent.<id>`）。1 結果 1 キー。docs/tech-stack.md §4.2
+// ---------------------------------------------------------------------------
+
+export const RECENT_LIMITS = {
+  /** 保存する件数 */
+  count: 10,
+  /** 1 件あたりの結果テキストの UTF-8 バイト数 */
+  textBytes: 200 * 1024,
+} as const;
+
+export const RecentSummarySchema = z.object({
+  version: z.literal(1),
+  /** 結果を出したジョブの ID（再生成すると同じキーを最新の結果で置き換える） */
+  id: z.uuid(),
+  /** 保存した時刻（一覧の並び順と、件数超過・容量不足で古いものから削除する順に使う） */
+  createdAt: z.number().nonnegative(),
+  sourceType: z.enum(SOURCE_TYPES),
+  title: z.string().max(JOB_LIMITS.title),
+  displayUrl: z.string().max(JOB_LIMITS.displayUrl),
+  provider: z.enum(PROVIDER_IDS),
+  model: ModelIdSchema,
+  presetId: z.enum(PRESET_IDS),
+  stopReason: z.enum(STOP_REASONS),
+  /** 結果テキスト（Markdown）。上限を超える場合は先頭から上限までに切り詰めて `truncated` にする */
+  text: z.string().max(RECENT_LIMITS.textBytes),
+  truncated: z.boolean(),
+});
+
+export type RecentSummary = z.infer<typeof RecentSummarySchema>;

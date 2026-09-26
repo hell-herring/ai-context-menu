@@ -1,5 +1,6 @@
 import { browser } from "wxt/browser";
 import { createErrorJob, jobByteSize, MAX_JOB_BYTES } from "../job/create";
+import { clearRecentSummaries, parseRecentSummaries, recentStorageKey } from "./recent";
 import { type Job, JobSchema } from "./schema";
 
 // 要約ジョブの受け渡し（storage.session。メモリのみ・ブラウザ終了で消える）。docs/tech-stack.md §4.2
@@ -9,6 +10,40 @@ export function jobStorageKey(windowId: number): string {
 }
 
 export type WriteResult = "written" | "superseded" | "failed";
+
+/** storage.session 全体で使ってよいバイト数（全体上限 10 MB に余裕を持たせる。docs/tech-stack.md §4.2 手順 8） */
+export const MAX_SESSION_BYTES = 8 * 1024 * 1024;
+
+/** 容量不足のときに削除できる最近の要約 */
+export interface RecentUsage {
+  key: string;
+  bytes: number;
+  createdAt: number;
+}
+
+/**
+ * ジョブを書き込めるかの判定。使用量 − 置き換える既存ジョブ ＋ 新しいジョブが上限を超える場合は、
+ * 最近の要約を古いものから削除して収める。すべて削除しても収まらなければ何も削除せずに `fits: false`
+ */
+export function planSessionCapacity(usage: {
+  used: number;
+  replaced: number;
+  incoming: number;
+  recents: readonly RecentUsage[];
+  limit?: number;
+}): { fits: boolean; remove: string[] } {
+  const { replaced, incoming, recents, limit = MAX_SESSION_BYTES } = usage;
+  let used = usage.used - replaced + incoming;
+  const remove: string[] = [];
+  for (const recent of [...recents].sort((a, b) => a.createdAt - b.createdAt)) {
+    if (used <= limit) {
+      break;
+    }
+    used -= recent.bytes;
+    remove.push(recent.key);
+  }
+  return used <= limit ? { fits: true, remove } : { fits: false, remove: [] };
+}
 
 /**
  * background 側のジョブ書き込み。
@@ -39,19 +74,69 @@ export class JobWriter {
       return "superseded";
     }
     const key = jobStorageKey(job.windowId);
-    const payload = jobByteSize(job) > MAX_JOB_BYTES ? createErrorJob(job, "tooLarge") : job;
+    let payload = jobByteSize(job) > MAX_JOB_BYTES ? createErrorJob(job, "tooLarge") : job;
+    try {
+      if (!(await makeRoom(key, payload))) {
+        payload = createErrorJob(job, "tooManyJobs");
+      }
+    } catch {
+      // 使用量を測れなくても書き込みは試みる（失敗したら下で最近の要約を削除して再試行する）
+    }
     try {
       await browser.storage.session.set({ [key]: payload });
       return "written";
     } catch {
-      // 容量超過など。小さなエラージョブで知らせる（それも失敗したら諦める）
-      try {
-        await browser.storage.session.set({ [key]: createErrorJob(job, "tooLarge") });
-      } catch {
-        return "failed";
-      }
-      return "written";
+      // 容量超過など。最近の要約を削除して 1 回だけ再試行する
     }
+    try {
+      await clearRecentSummaries();
+      await browser.storage.session.set({ [key]: payload });
+      return "written";
+    } catch {
+      // それでも失敗したら小さなエラージョブで知らせる（それも失敗したら諦める）
+    }
+    try {
+      await browser.storage.session.set({ [key]: createErrorJob(job, "tooLarge") });
+    } catch {
+      return "failed";
+    }
+    return "written";
+  }
+}
+
+/**
+ * storage.session 全体の容量を確認し、足りなければ最近の要約を古いものから削除する。
+ * 削除しても収まらなければ false
+ */
+async function makeRoom(key: string, job: Job): Promise<boolean> {
+  const incoming = byteSize(key, job);
+  const [used, replaced] = await Promise.all([bytesInUse(null), bytesInUse([key])]);
+  if (used - replaced + incoming <= MAX_SESSION_BYTES) {
+    return true;
+  }
+  const recents = parseRecentSummaries(await browser.storage.session.get(null)).map((summary) => {
+    const recentKey = recentStorageKey(summary.id);
+    return { key: recentKey, bytes: byteSize(recentKey, summary), createdAt: summary.createdAt };
+  });
+  const plan = planSessionCapacity({ used, replaced, incoming, recents });
+  if (plan.remove.length > 0) {
+    await browser.storage.session.remove(plan.remove);
+  }
+  return plan.fits;
+}
+
+/** キーと値を JSON 化した UTF-8 バイト数（getBytesInUse と同じ数え方の近似） */
+function byteSize(key: string, value: unknown): number {
+  return new TextEncoder().encode(key + JSON.stringify(value)).length;
+}
+
+/** storage.session の使用バイト数。getBytesInUse が使えなければ値から概算する */
+async function bytesInUse(keys: string[] | null): Promise<number> {
+  try {
+    return await browser.storage.session.getBytesInUse(keys);
+  } catch {
+    const items = await browser.storage.session.get(keys);
+    return Object.entries(items).reduce((sum, [key, value]) => sum + byteSize(key, value), 0);
   }
 }
 
