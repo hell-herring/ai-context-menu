@@ -176,9 +176,16 @@ function usageOf(response: ResponseObject): Pick<Extract<StreamEvent, { type: "d
     : {};
 }
 
+/** コンテキスト長の超過を表すエラーコード（エラーの `code`。メッセージ本文では判定しない） */
+const CONTEXT_LENGTH_EXCEEDED = "context_length_exceeded";
+
 /** `response.failed` のエラーコードを共通エラーに変換する（メッセージ本文は保持しない） */
 function responseFailedError(response: ResponseObject): ProviderError {
-  switch (response.error?.code) {
+  // SDK の型に列挙されていないコード（context_length_exceeded 等）も届きうるため、文字列として比べる
+  const code: string | undefined = response.error?.code;
+  switch (code) {
+    case CONTEXT_LENGTH_EXCEEDED:
+      return new ProviderError("context_length");
     case "rate_limit_exceeded":
       return new ProviderError("rate_limit");
     case "server_error":
@@ -188,9 +195,6 @@ function responseFailedError(response: ResponseObject): ProviderError {
       return new ProviderError("bad_request");
   }
 }
-
-/** コンテキスト長の超過を表すエラーコード（エラーの `code`。メッセージ本文では判定しない） */
-const CONTEXT_LENGTH_EXCEEDED = "context_length_exceeded";
 
 /** SDK の型付き例外クラスで分岐して共通エラーに変換する（メッセージ文字列でマッチしない） */
 export function toProviderError(error: unknown, signal?: AbortSignal): ProviderError {
@@ -219,7 +223,14 @@ export function toProviderError(error: unknown, signal?: AbortSignal): ProviderE
     // ストリーム途中の error イベントは status を持たない APIError として届く
     const status = typeof error.status === "number" ? error.status : undefined;
     if (status === undefined) {
-      return new ProviderError(error.code === "rate_limit_exceeded" ? "rate_limit" : "overloaded");
+      switch (error.code) {
+        case CONTEXT_LENGTH_EXCEEDED:
+          return new ProviderError("context_length");
+        case "rate_limit_exceeded":
+          return new ProviderError("rate_limit");
+        default:
+          return new ProviderError("overloaded");
+      }
     }
     if (status >= 500) {
       return new ProviderError("overloaded", status);
