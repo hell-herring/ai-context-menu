@@ -12,13 +12,19 @@ export default defineConfig({
   vite: () => ({
     plugins: [tailwindcss()],
   }),
-  manifest: {
+  manifest: ({ mode }) => ({
     name: "__MSG_extName__",
     description: "__MSG_extDescription__",
     default_locale: "ja",
     minimum_chrome_version: "116",
     // docs/tech-stack.md §2 の一覧のうち、現在使うものだけ（M2: OpenAI を追加）
     permissions: ["contextMenus", "sidePanel", "activeTab", "scripting", "storage"],
-    host_permissions: ["https://api.anthropic.com/*", "https://api.openai.com/*"],
-  },
+    host_permissions: [
+      "https://api.anthropic.com/*",
+      "https://api.openai.com/*",
+      // E2E 用ビルド（`pnpm build:e2e`。配布しない）のみ。Playwright からはメニューのクリックで
+      // activeTab を付与できないため、テスト用のローカルサーバーのページに注入できるようにする
+      ...(mode === "e2e" ? ["http://localhost/*"] : []),
+    ],
+  }),
 });

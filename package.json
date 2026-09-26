@@ -19,6 +19,8 @@
     "typecheck": "wxt prepare && tsc --noEmit",
     "test": "vitest run",
     "test:build": "vitest run --config vitest.build.config.ts",
+    "build:e2e": "wxt build --mode e2e",
+    "test:e2e": "playwright test",
     "check": "pnpm lint && pnpm typecheck && pnpm test"
   },
   "dependencies": {
@@ -33,6 +35,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
+    "@playwright/test": "1.63.0",
     "@tailwindcss/vite": "4.3.3",
     "@types/node": "26.6.2",
     "@types/react": "19.3.0",

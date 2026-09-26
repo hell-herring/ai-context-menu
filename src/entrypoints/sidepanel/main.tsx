@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { browser } from "wxt/browser";
 import { t } from "../../lib/i18n";
+import { prepareProviders } from "../../lib/providers/registry";
 import { App } from "./App";
 import "../../styles/app.css";
 
@@ -13,8 +14,10 @@ if (!root) {
   throw new Error("Root element not found");
 }
 
-createRoot(root).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
+void prepareProviders().then(() =>
+  createRoot(root).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  ),
 );
