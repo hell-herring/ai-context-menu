@@ -1,0 +1,24 @@
+import tailwindcss from "@tailwindcss/vite";
+import { defineConfig } from "wxt";
+
+// 権限・CSP はこのファイルでのみ管理する（docs/tech-stack.md §2）。
+// 変更時は tests/build/manifest.test.ts の期待値を更新し、PR で理由を説明して人間の承認を得ること。
+export default defineConfig({
+  srcDir: "src",
+  publicDir: "src/public",
+  modules: ["@wxt-dev/module-react"],
+  // 依存関係を明示するため自動インポートは使わない
+  imports: false,
+  vite: () => ({
+    plugins: [tailwindcss()],
+  }),
+  manifest: {
+    name: "__MSG_extName__",
+    description: "__MSG_extDescription__",
+    default_locale: "ja",
+    minimum_chrome_version: "116",
+    // M0 で必要な権限のみ。activeTab / scripting / storage / host_permissions は
+    // 使用するマイルストーン（M1 以降）で docs/tech-stack.md §2 の一覧から追加する。
+    permissions: ["contextMenus", "sidePanel"],
+  },
+});

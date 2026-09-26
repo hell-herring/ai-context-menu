@@ -1,6 +1,6 @@
 # 技術選定とアーキテクチャ
 
-> ステータス: **Draft v0.1**（実装前）
+> ステータス: **Draft v0.1**（M0 雛形まで実装済み）
 > 関連: [機能仕様](./spec.md) / [ガードレール](./guardrails.md) / [AGENTS.md](../AGENTS.md)
 
 ## 1. 技術スタック一覧
@@ -19,7 +19,7 @@
 | Lint / Format | **Biome** | 1ツールで lint+format、高速、設定が少ない | ESLint + Prettier |
 | 単体テスト | **Vitest**（+ happy-dom） | Vite と設定共有。WXT が公式にテスト支援を提供 | Jest |
 | E2E テスト | **Playwright**（拡張を読み込んだ Chromium） | 拡張の実読み込み・サイドパネル検証が可能 | Puppeteer |
-| パッケージマネージャ | **pnpm** | 高速・厳格な依存解決 | npm / yarn |
+| パッケージマネージャ | **pnpm 12** | 高速・厳格な依存解決。公開直後の版を導入しない `minimumReleaseAge` を既定で持つ | npm / yarn |
 | ランタイム（開発） | **Node.js 24 LTS** | 現行 Active LTS | - |
 | CI | **GitHub Actions** | リポジトリが GitHub | - |
 | 依存更新 | **Renovate**（または Dependabot） | 依存の脆弱性・更新を自動 PR 化 | - |
@@ -44,6 +44,7 @@
 - **`<all_urls>` / `tabs` / `webRequest` / `cookies` / `history` は要求しない。** コンテンツスクリプトの常時注入（`content_scripts` 宣言）もしない。
 - Gemini 対応時（[spec D-5](./spec.md#61-決定事項)）に `https://generativelanguage.googleapis.com/*` を host_permissions に追加する。追加はその PR で人間の承認を得る。
 - ローカル LLM・任意のエンドポイントには対応しない（[spec D-4](./spec.md#61-決定事項)）。SDK の `baseURL` はユーザー設定にせず、各社公式ホスト固定とする。
+- 上記は MVP で要求する権限の**上限**。実際の manifest には、各マイルストーンで使うものだけを追加する（M0: `contextMenus`, `sidePanel`／M1: `activeTab`, `scripting`, `storage`, `https://api.anthropic.com/*`／M2: `https://api.openai.com/*`）。
 - 権限一覧はテストでスナップショット固定する（→ [ガードレール §5](./guardrails.md#5-開発プロセスのガードレール)）。
 - `minimum_chrome_version: "116"`。
 
@@ -107,13 +108,15 @@
 - 処理済みジョブ ID をメモリに保持し、同じ ID は無視する（`onChanged` と起動時 `get` の両方で受け取った場合の重複対策）。
 - `createdAt` から 60 秒以上経過したジョブは送信せず破棄する（取り残されたジョブの誤送信防止）。
 
-### 4.3 ディレクトリ構成（予定）
+### 4.3 ディレクトリ構成
 
 ```
 .
 ├── AGENTS.md / CLAUDE.md
 ├── docs/                      # 仕様・設計・ガードレール
 ├── wxt.config.ts              # manifest 定義（権限はここだけで管理）
+├── vitest.config.ts           # 単体テスト
+├── vitest.build.config.ts     # ビルド成果物の検査（test:build）
 ├── src/
 │   ├── entrypoints/
 │   │   ├── background.ts
@@ -121,6 +124,7 @@
 │   │   ├── sidepanel/         # index.html, main.tsx, App.tsx
 │   │   └── options/
 │   ├── lib/
+│   │   ├── context-menu.ts    # メニュー定義・クリック処理（sidePanel.open の呼び出し順を含む）
 │   │   ├── providers/         # types.ts, anthropic.ts, openai.ts, registry.ts
 │   │   ├── prompt/            # presets.ts, build.ts
 │   │   ├── extract/           # 注入関数から呼ぶ純粋関数（テスト対象）
@@ -130,9 +134,12 @@
 │   ├── components/            # 共有 React コンポーネント
 │   └── public/_locales/{ja,en}/messages.json
 ├── tests/
+│   ├── unit/                  # src 外の単体テスト（ロケール整合など）。src/lib 内は *.test.ts を同じ階層に置く
+│   ├── build/                 # 本番ビルド出力の検査（manifest 固定・テスト専用マーカー）
 │   ├── fixtures/              # 抽出テスト用 HTML
 │   └── e2e/
-└── .github/workflows/ci.yml
+├── .github/workflows/ci.yml
+└── .github/dependabot.yml     # 依存・Actions の週次更新
 ```
 
 ### 4.4 プロバイダ抽象
@@ -203,9 +210,9 @@ user:
 - `url` はプライバシー保護のため `origin + pathname` のみ（[spec §3.2](./spec.md#32-コンテンツ取得)）。
 - プロンプト生成は `lib/prompt/build.ts` の純粋関数に集約し、スナップショットテストで固定する。区切りを破る入力（`"></document>` を含むタイトル・本文など）のテストケースを必ず含める。
 
-## 5. 品質ゲート（予定コマンド）
+## 5. 品質ゲート
 
-スキャフォールド時に `package.json` へ定義する。
+`package.json` の scripts。`build:e2e` / `test:e2e` は M2 で追加する。
 
 | コマンド | 内容 |
 |---|---|
@@ -216,11 +223,12 @@ user:
 | `pnpm format` | `biome format --write .` |
 | `pnpm typecheck` | `wxt prepare && tsc --noEmit` |
 | `pnpm test` | `vitest run`（単体） |
+| `pnpm test:build` | 本番ビルド出力の検査（manifest の権限・CSP のスナップショット比較、テスト専用マーカーの混入検査）。`pnpm build` の後に実行 |
 | `pnpm build:e2e` | E2E 用ビルド（`wxt build --mode e2e`、出力は本番と別ディレクトリ `.output/e2e/`。モックプロバイダを含む） |
 | `pnpm test:e2e` | Playwright（`build:e2e` の出力を読み込み、モックプロバイダで検証） |
 | `pnpm check` | lint + typecheck + test をまとめて実行（PR 前に必須） |
 
-CI（GitHub Actions）は `pnpm install --frozen-lockfile` → `check` → `build`（本番）→ 本番出力の manifest スナップショット・テスト専用マーカー検査 → `build:e2e` → `test:e2e` を実行し、**本番ビルド**の zip をアーティファクトとして保存する。E2E 用ビルドは配布しない。
+CI（GitHub Actions）は `pnpm install --frozen-lockfile` → `pnpm audit --prod` → `check` → `build`（本番）→ `test:build`（manifest スナップショット・テスト専用マーカー検査）→ `build:e2e` → `test:e2e`（M2 以降）を実行し、**本番ビルド**（`.output/chrome-mv3`）をアーティファクトとして保存する。E2E 用ビルドは配布しない。
 
 ## 6. テスト戦略
 

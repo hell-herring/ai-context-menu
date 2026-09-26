@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit (production dependencies)
+        run: pnpm audit --prod --audit-level high
+
+      - name: Check (lint + typecheck + test)
+        run: pnpm check
+
+      - name: Build (production)
+        run: pnpm build
+
+      # manifest の権限・CSP の固定と、テスト専用マーカーの混入検査
+      - name: Verify build output
+        run: pnpm test:build
+
+      # 検査済みの本番ビルドのみを保存する（E2E 用ビルドは配布しない）
+      - name: Upload production build
+        uses: actions/upload-artifact@v7
+        with:
+          name: chrome-mv3
+          path: .output/chrome-mv3
+          if-no-files-found: error
+          retention-days: 14

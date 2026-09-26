@@ -1,0 +1,7 @@
+# pnpm の設定（pnpm 11 以降、.npmrc では認証・レジストリ以外の設定を読まない）
+
+# 依存は ^ / ~ なしの固定バージョンで保存する（tests/unit/package-json.test.ts でも検査）
+saveExact: true
+
+# 公開から 1 日（1440 分）未満の版は導入しない（pnpm 12 の既定値を明示。サプライチェーン対策）
+minimumReleaseAge: 1440
