@@ -16,7 +16,7 @@
 
 Chrome ウェブストアでは公開しません。ビルドして手動で読み込みます。
 
-1. Node.js 24 と pnpm を用意し、`pnpm install && pnpm build`
+1. Node.js 24 と pnpm 12 を用意し、`pnpm install && pnpm build`
 2. `chrome://extensions` を開き「デベロッパー モード」を有効化
 3. 「パッケージ化されていない拡張機能を読み込む」で `.output/chrome-mv3` を選択
 
