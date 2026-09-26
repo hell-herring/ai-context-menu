@@ -1,4 +1,5 @@
 import { browser } from "wxt/browser";
+import type { StopReason } from "../providers/types";
 import { RECENT_LIMITS, type RecentSummary, RecentSummarySchema } from "./schema";
 
 // 最近の要約（storage.session。メモリのみ・ブラウザ終了で消える）。docs/tech-stack.md §4.2
@@ -25,6 +26,14 @@ export function truncateUtf8(text: string, maxBytes: number): { text: string; tr
   return read === text.length
     ? { text, truncated: false }
     : { text: text.slice(0, read), truncated: true };
+}
+
+/**
+ * 完了した結果を最近の要約に残すか。テキストが空なら残さないが、拒否は残す
+ * （OpenAI の拒否は本文を出さずに完了するため、空でも拒否されたことを残す。docs/spec.md §3.4）
+ */
+export function shouldKeepRecent(text: string, stopReason: StopReason): boolean {
+  return text !== "" || stopReason === "refusal";
 }
 
 /** 保存する値。結果テキストを上限に収める */

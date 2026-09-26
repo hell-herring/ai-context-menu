@@ -26,7 +26,7 @@ import {
   type StopReason,
   type Usage,
 } from "../../lib/providers/types";
-import { createRecentSummary, saveRecentSummary } from "../../lib/storage/recent";
+import { createRecentSummary, saveRecentSummary, shouldKeepRecent } from "../../lib/storage/recent";
 import type { ContentJob, CoreSettings, Job, JobErrorCode } from "../../lib/storage/schema";
 import { getApiKeys, watchApiKeys } from "../../lib/storage/secrets";
 import { readJob, removeJob, watchJob } from "../../lib/storage/session";
@@ -248,7 +248,7 @@ export function useSummary() {
               phase: { kind: "done", stopReason: event.stopReason, usage: event.usage },
             });
             // 完了した結果だけを最近の要約に残す（再生成したら同じジョブの項目を置き換える）
-            if (text !== "" && runRef.current === run) {
+            if (shouldKeepRecent(text, event.stopReason) && runRef.current === run) {
               saveRecentSummary(
                 createRecentSummary(
                   {

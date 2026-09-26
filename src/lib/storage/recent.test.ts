@@ -9,6 +9,7 @@ import {
   recentKeysToRemove,
   recentStorageKey,
   saveRecentSummary,
+  shouldKeepRecent,
   truncateUtf8,
   watchRecentSummaries,
 } from "./recent";
@@ -56,6 +57,19 @@ describe("truncateUtf8", () => {
     expect(long.truncated).toBe(true);
     expect(new TextEncoder().encode(long.text).length).toBeLessThanOrEqual(RECENT_LIMITS.textBytes);
     expect(summary(1).truncated).toBe(false);
+  });
+});
+
+describe("shouldKeepRecent", () => {
+  it("テキストがある完了した結果を残す", () => {
+    expect(shouldKeepRecent("## 要約", "end")).toBe(true);
+    expect(shouldKeepRecent("途中", "max_tokens")).toBe(true);
+  });
+
+  it("テキストが空なら残さないが、拒否は空でも残す", () => {
+    expect(shouldKeepRecent("", "end")).toBe(false);
+    expect(shouldKeepRecent("", "max_tokens")).toBe(false);
+    expect(shouldKeepRecent("", "refusal")).toBe(true);
   });
 });
 

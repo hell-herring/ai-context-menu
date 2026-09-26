@@ -197,7 +197,7 @@ function RecentView({ summary, onBack }: { summary: RecentSummary; onBack: () =>
           {t("recentSavedAt", formatSavedAt(summary.createdAt))}
         </p>
       </section>
-      <MarkdownView text={summary.text} />
+      {summary.text !== "" && <MarkdownView text={summary.text} />}
       {summary.stopReason !== "end" && (
         <p className="text-neutral-600 text-xs dark:text-neutral-400">
           {t(summary.stopReason === "max_tokens" ? "statusMaxTokens" : "statusRefusal")}
@@ -206,9 +206,11 @@ function RecentView({ summary, onBack }: { summary: RecentSummary; onBack: () =>
       {summary.truncated && (
         <p className="text-amber-700 text-xs dark:text-amber-400">{t("recentTruncated")}</p>
       )}
-      <div className="flex flex-wrap gap-2 border-neutral-200 border-t pt-3 dark:border-neutral-700">
-        <CopyButton key={summary.id} text={summary.text} />
-      </div>
+      {summary.text !== "" && (
+        <div className="flex flex-wrap gap-2 border-neutral-200 border-t pt-3 dark:border-neutral-700">
+          <CopyButton key={summary.id} text={summary.text} />
+        </div>
+      )}
     </>
   );
 }
