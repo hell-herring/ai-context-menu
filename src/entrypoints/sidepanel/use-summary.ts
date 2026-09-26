@@ -70,6 +70,12 @@ export type PanelState =
       fitApproval: ModelFitApproval | undefined;
       /** モデルに収めるために本文を切り詰めて送った場合、送った本文の文字数 */
       fittedChars: number | undefined;
+      /**
+       * 受信時の確認（上限超過・設定「常に」・モデルの入力上限の超過）を済ませたか（確認なしで送った場合も true）。
+       * 済ませていないジョブ（切り替えで本文を空にしても収まらないエラーになった等）は、
+       * 再生成でも送らずに確認に戻す（入力を黙って切り詰めない。docs/guardrails.md）
+       */
+      confirmed: boolean;
     };
 
 type ApiKeys = Awaited<ReturnType<typeof getApiKeys>>;
@@ -165,6 +171,7 @@ export function useSummary() {
         text: "",
         fitApproval,
         fittedChars: undefined,
+        confirmed: true,
       });
 
       // 受信したテキストは描画フレームごとにまとめて反映する
@@ -267,6 +274,7 @@ export function useSummary() {
         presetId: job.presetId,
         switchCheck: undefined,
         text: "",
+        confirmed: false,
       } as const;
       setState({
         ...summary,
@@ -476,9 +484,25 @@ export function useSummary() {
     }, [current]),
     stop: useCallback(() => controllerRef.current?.abort(), []),
     regenerate: useCallback(() => {
-      if (current && current.phase.kind !== "preparing") {
-        void send(current.job, current.presetId, current.choice, current.fitApproval);
+      if (!current || current.phase.kind === "preparing") {
+        return;
       }
-    }, [current, send]),
+      if (current.confirmed) {
+        void send(current.job, current.presetId, current.choice, current.fitApproval);
+        return;
+      }
+      // まだ確認していないジョブは送らずに確認に戻す（選択中の送信先で判定し直す）
+      const check =
+        env && modelCheck(current.job, current.presetId, current.choice, env, current.fitApproval);
+      setState(
+        check?.kind === "tooLong"
+          ? { ...current, switchCheck: check, phase: { kind: "error", error: "context_length" } }
+          : {
+              ...current,
+              switchCheck: undefined,
+              phase: { kind: "confirm", overflow: check?.overflow },
+            },
+      );
+    }, [current, env, send]),
   };
 }
