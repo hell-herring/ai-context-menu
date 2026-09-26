@@ -115,7 +115,15 @@ export function ModelSection({
       const limits = list && modelLimitsFrom(model, list);
       const next = await onSave((current) => ({
         models: { ...current.models, [provider]: model },
-        modelLimits: { ...current.modelLimits, [provider]: limits },
+        modelLimits: {
+          ...current.modelLimits,
+          // 一覧を確認できなかった場合、モデルが変わっていなければ記録済みの上限を残す
+          // （一時的な通信エラーで、確認済みの上限による頭打ちが外れないように）
+          [provider]:
+            list === undefined && current.models[provider] === model
+              ? current.modelLimits[provider]
+              : limits,
+        },
       }));
       setInput(model);
       if (list === undefined) {

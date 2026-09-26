@@ -185,6 +185,7 @@ function Status({ phase }: { phase: Phase }) {
 
 function StatusText({ phase }: { phase: Phase }) {
   switch (phase.kind) {
+    case "preparing":
     case "confirm":
       return null;
     case "cancelled":
@@ -231,7 +232,7 @@ function Actions({
   onRegenerate: () => void;
 }) {
   const { phase } = state;
-  if (phase.kind === "confirm") {
+  if (phase.kind === "preparing" || phase.kind === "confirm") {
     return null;
   }
   const streaming = phase.kind === "streaming";
