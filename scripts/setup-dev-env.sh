@@ -56,12 +56,15 @@ case "$(uname -s)-$(uname -m)" in
   *) fail "未対応の OS/CPU です: $(uname -s)-$(uname -m)（Linux x64 / arm64 のみ）" ;;
 esac
 
-# 入れた依存が消えていないか（pnpm の仮想ストアと、package.json の直接の依存がすべてあるか）。
+# 入れた依存が消えていないか（pnpm の仮想ストアと、package.json の直接の依存、推移的な依存がすべてあるか）。
+# 推移的な依存は、直接の依存から仮想ストア（node_modules/.pnpm/<パッケージ>/node_modules/）のリンクをたどり、
+# どれも実在する package.json を指すかで確かめる（依存が消えるとリンク切れになる。どこからも参照されない項目は見ない）。
 # オフラインで確かめられる範囲にとどめる（各パッケージの中身までは検査しない）
 deps_installed() {
   [[ -f "$ROOT_DIR/node_modules/.pnpm/lock.yaml" ]] || return 1
   (cd "$ROOT_DIR" && node -e '
     const fs = require("node:fs");
+    const path = require("node:path");
     const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
     const names = [...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.devDependencies ?? {})];
     const missing = names.filter((name) => !fs.existsSync("node_modules/" + name + "/package.json"));
@@ -69,11 +72,40 @@ deps_installed() {
       console.error("見つからない依存: " + missing.join(" "));
       process.exit(1);
     }
+    // 直接の依存から仮想ストアのリンクをたどる（前の版の残りなど、どこからも参照されない項目は検査しない）。
+    // 実体は node_modules/.pnpm/<項目>/node_modules/<名前> にあり、同じ node_modules に並ぶものがその依存
+    const children = (dir) =>
+      fs
+        .readdirSync(dir)
+        .filter((name) => !name.startsWith("."))
+        .flatMap((name) => (name.startsWith("@") ? children(path.join(dir, name)).map((sub) => path.join(name, sub)) : [name]));
+    const visited = new Set();
+    const broken = [];
+    const queue = names.map((name) => fs.realpathSync("node_modules/" + name));
+    while (queue.length > 0) {
+      const real = queue.pop();
+      const match = /^(.*\/node_modules\/\.pnpm\/[^/]+\/node_modules)\//.exec(real);
+      if (!match || visited.has(match[1])) continue;
+      visited.add(match[1]);
+      for (const name of children(match[1])) {
+        const dep = path.join(match[1], name);
+        if (fs.existsSync(path.join(dep, "package.json"))) queue.push(fs.realpathSync(dep));
+        else broken.push(path.relative(process.cwd(), dep));
+      }
+    }
+    if (broken.length > 0) {
+      console.error("仮想ストアに欠けた依存があります: " + broken.slice(0, 5).join(" ") + (broken.length > 5 ? " ほか " + (broken.length - 5) + " 件" : ""));
+      process.exit(1);
+    }
   ' 2>&1 | sed 's/^/[setup-dev-env]      /' >&2; exit "${PIPESTATUS[0]}")
 }
 
 deps_hash() {
   cat "$ROOT_DIR/package.json" "$ROOT_DIR/pnpm-lock.yaml" "$ROOT_DIR/pnpm-workspace.yaml" | sha256sum | cut -d " " -f 1
+}
+
+deps_current() {
+  [[ -f "$DEPS_STAMP" && "$(cat "$DEPS_STAMP")" == "$(deps_hash)" && -d "$ROOT_DIR/.wxt" ]] && deps_installed
 }
 
 node_major_of() { "$1" -p 'process.versions.node.split(".")[0]' 2>/dev/null || true; }
@@ -267,7 +299,7 @@ check() {
   fi
   # オフライン（Codex のエージェント実行中など）でも検査できるよう、pnpm には問い合わせず、
   # このスクリプトで入れたときの package.json / pnpm-lock.yaml / pnpm-workspace.yaml と比べる
-  if [[ -f "$DEPS_STAMP" && "$(cat "$DEPS_STAMP")" == "$(deps_hash)" && -d "$ROOT_DIR/.wxt" ]] && deps_installed; then
+  if deps_current; then
     log "OK   依存（pnpm-lock.yaml と一致）"
   else
     log "NG   依存が未導入・欠けている、または package.json / pnpm-lock.yaml の変更後に入れ直していません（bash scripts/setup-dev-env.sh）"
@@ -313,9 +345,13 @@ if [[ "$MODE" == "setup" ]]; then
     log "pnpm@$PNPM_VERSION を入れます"
     npm install --global --no-fund --no-audit --no-update-notifier "pnpm@$PNPM_VERSION" >&2
   fi
-  log "依存を入れます（pnpm install --frozen-lockfile）"
-  (cd "$ROOT_DIR" && pnpm install --frozen-lockfile >&2)
-  deps_hash >"$DEPS_STAMP"
+  if deps_current; then
+    log "依存は導入済みです（pnpm install を省略）"
+  else
+    log "依存を入れます（pnpm install --frozen-lockfile）"
+    (cd "$ROOT_DIR" && pnpm install --frozen-lockfile >&2)
+    deps_hash >"$DEPS_STAMP"
+  fi
   install_chromium
 fi
 
