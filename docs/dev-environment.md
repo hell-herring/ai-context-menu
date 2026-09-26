@@ -85,7 +85,7 @@ Codex の環境設定（Environments）で次のように設定する。
 | 項目 | web 版 Claude Code | web 版 Codex | 影響と対処 |
 |---|---|---|---|
 | 元から入っている Node.js | 22 系など（`/opt/node*`） | イメージのプリセット | 使わない。スクリプトの Node.js を PATH の先頭に置く |
-| Playwright の Chromium の取得（`cdn.playwright.dev`） | 既定のネットワーク設定では**遮断される** | セットアップ中は取得できる | Claude Code では `PLAYWRIGHT_BROWSERS_PATH` 配下の既存の Chromium（Playwright の想定より古い版）を `PLAYWRIGHT_CHROMIUM_EXECUTABLE` で使う。2026-09 時点で E2E は全件通る。想定版で動かしたい場合は、環境のネットワーク設定で `cdn.playwright.dev` に出られるようにする（次のセットアップで取得し、代替は使わなくなる） |
+| Playwright の Chromium の取得（`cdn.playwright.dev`） | 既定のネットワーク設定では**遮断される** | セットアップ中は取得できる | Claude Code では `PLAYWRIGHT_BROWSERS_PATH` 配下の既存の Chromium（Playwright の想定より古い版）を `PLAYWRIGHT_CHROMIUM_EXECUTABLE` で使う。2026-09 時点で E2E は全件通る。セットアップのたびに想定版の取得を先に試みる（遮断されている間は数秒余分にかかる）ため、環境のネットワーク設定で `cdn.playwright.dev` に出られるようにすれば、次のセットアップで想定版を取得し、代替は使わなくなる。利用者が自分で `PLAYWRIGHT_CHROMIUM_EXECUTABLE` を指定した場合は、それが起動できればそのまま使う |
 | エージェント実行中のネットワーク | 環境のネットワーク設定に従う | 既定でオフ | 依存の追加（`pnpm add`）は Codex ではセットアップ以外でできない。依存を変える作業は Claude Code かローカルで行う |
 | 環境変数の反映 | `$CLAUDE_ENV_FILE` | `~/.bashrc` / `~/.profile` | スクリプトが両方に書く |
 | Node.js のパッチ版 | 初回セットアップ時点の 26.x の最新 | 同左 | 導入済みの 26.x があれば更新しない。新しいパッチ版にするときは `$AICM_DEV_HOME/node-v*` を削除して再実行する（CI は毎回最新の 26.x） |

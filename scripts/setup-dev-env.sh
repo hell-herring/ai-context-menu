@@ -161,16 +161,39 @@ existing_chromium() {
     sort -V | tail -n 1
 }
 
+# 使う Chromium の代替（env.sh に書く）を変え、この実行中の PLAYWRIGHT_CHROMIUM_EXECUTABLE にも反映する
+set_chromium_fallback() {
+  CHROMIUM_FALLBACK="$1"
+  write_env_script
+  if [[ -n "$CHROMIUM_FALLBACK" ]]; then
+    export PLAYWRIGHT_CHROMIUM_EXECUTABLE="$CHROMIUM_FALLBACK"
+  else
+    unset PLAYWRIGHT_CHROMIUM_EXECUTABLE
+  fi
+}
+
 install_chromium() {
-  chromium_works && return 0
+  # 利用者が自分で指定した Chromium（前回の代替とは別のもの）は、起動できればそのまま使う
+  if [[ -n "${PLAYWRIGHT_CHROMIUM_EXECUTABLE:-}" && "$PLAYWRIGHT_CHROMIUM_EXECUTABLE" != "$CHROMIUM_FALLBACK" ]] &&
+    chromium_works; then
+    return 0
+  fi
+  # 前回の代替があっても、Playwright の想定版を毎回優先する（取得できるようになったら代替をやめる）
+  if PLAYWRIGHT_CHROMIUM_EXECUTABLE="" chromium_works; then
+    set_chromium_fallback ""
+    return 0
+  fi
   log "Playwright の Chromium を取得します（pnpm exec playwright install chromium）"
   # PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD は postinstall 用の指定なので、明示的な取得では外す
   if (cd "$ROOT_DIR" && env -u PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD pnpm exec playwright install chromium >&2); then
-    if ! chromium_works && can_install_os_deps; then
+    if ! PLAYWRIGHT_CHROMIUM_EXECUTABLE="" chromium_works && can_install_os_deps; then
       log "Chromium の依存ライブラリを入れます（pnpm exec playwright install-deps chromium）"
       (cd "$ROOT_DIR" && pnpm exec playwright install-deps chromium >&2)
     fi
-    chromium_works && return 0
+    if PLAYWRIGHT_CHROMIUM_EXECUTABLE="" chromium_works; then
+      set_chromium_fallback ""
+      return 0
+    fi
   fi
   # 取得できない（ネットワークポリシーで cdn.playwright.dev が許可されていない等）ときは、
   # 環境に入っている Chromium を PLAYWRIGHT_CHROMIUM_EXECUTABLE で使う（tests/e2e/fixtures.ts）
@@ -178,11 +201,10 @@ install_chromium() {
   fallback="$(existing_chromium)"
   if [[ -n "$fallback" ]] && PLAYWRIGHT_CHROMIUM_EXECUTABLE="$fallback" chromium_works; then
     log "WARN Playwright の Chromium を取得できないため、既存の $fallback を使います（Playwright の想定版と異なる）"
-    CHROMIUM_FALLBACK="$fallback"
-    write_env_script
-    export PLAYWRIGHT_CHROMIUM_EXECUTABLE="$fallback"
+    set_chromium_fallback "$fallback"
     return 0
   fi
+  set_chromium_fallback ""
   log "WARN Chromium を用意できませんでした。E2E（pnpm test:e2e）は実行できません"
 }
 
@@ -224,7 +246,7 @@ if [[ "$MODE" == "setup" ]]; then
     NODE_BIN="$(installed_node_bin)"
     [[ -n "$NODE_BIN" ]] || fail "展開した Node.js が見つかりません"
   fi
-  # 前回使った Chromium の代替は、まだ起動できるなら引き継ぐ（起動できなければ install_chromium で選び直す）
+  # 前回使った Chromium の代替を読む（使い続けるかは install_chromium で毎回決め直す）
   CHROMIUM_FALLBACK=""
   if [[ -f "$ENV_SCRIPT" ]] && grep -qF "$CHROMIUM_FALLBACK_MARKER" "$ENV_SCRIPT"; then
     CHROMIUM_FALLBACK="$(sed -n "s|^$CHROMIUM_FALLBACK_MARKER ||p" "$ENV_SCRIPT")"
