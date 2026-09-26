@@ -17,17 +17,18 @@ export function resolveProvider(
 }
 
 /**
- * キーを保存した後の既定プロバイダ。既定が未設定か、既定のプロバイダにキーがなければ
- * 保存したプロバイダを既定にする（「最初にキー登録したもの」。docs/spec.md §3.6）。
- * 変更不要なら undefined。
+ * キーを保存した後に設定へ書き込む既定プロバイダ（「最初にキー登録したもの」。docs/spec.md §3.6）。
+ *
+ * 保存前に使われていたプロバイダ（`keysBefore` で解決したもの）があればそれを維持し、
+ * なければ保存したプロバイダを既定にする。既定が未保存の設定（M1 で Anthropic のキーだけを登録済み等）
+ * に 2 つ目のキーを追加しても、使うプロバイダが黙って切り替わらないよう、維持するプロバイダも書き込む。
+ * 書き込み不要（設定の値のまま）なら undefined。
  */
 export function defaultProviderAfterSave(
   current: ProviderId | undefined,
   saved: ProviderId,
-  keys: RegisteredKeys,
+  keysBefore: RegisteredKeys,
 ): ProviderId | undefined {
-  if (current !== undefined && current !== saved && keys[current]) {
-    return undefined;
-  }
-  return current === saved ? undefined : saved;
+  const next = resolveProvider(current, keysBefore) ?? saved;
+  return next === current ? undefined : next;
 }

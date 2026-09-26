@@ -333,6 +333,8 @@ describe("isTextGenerationModel", () => {
     "gpt-4o-mini",
     "o3",
     "o4-mini",
+    "o1-preview",
+    "gpt-4-turbo-preview",
   ])("%s は対象", (id) => {
     expect(isTextGenerationModel(id)).toBe(true);
   });
@@ -345,6 +347,8 @@ describe("isTextGenerationModel", () => {
     "gpt-4o-mini-tts",
     "gpt-realtime-2",
     "gpt-4o-search-preview",
+    "gpt-4o-realtime-preview",
+    "computer-use-preview",
     "gpt-5.1-codex",
     "gpt-5.2-pro",
     "o3-deep-research",

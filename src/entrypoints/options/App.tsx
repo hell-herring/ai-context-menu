@@ -40,8 +40,9 @@ export function App() {
       if (masked === undefined) {
         return;
       }
-      // 最初にキーを登録したプロバイダを既定にする（docs/spec.md §3.6）
-      const changed = defaultProviderAfterSave(preferred, provider, registered(next));
+      // 最初にキーを登録したプロバイダを既定にする（docs/spec.md §3.6）。
+      // 保存前に使われていたプロバイダは維持するため、保存前のキーで判定する
+      const changed = defaultProviderAfterSave(preferred, provider, registered(keys));
       if (changed !== undefined) {
         await updateCoreSettings({ defaultProvider: changed });
         setPreferred(changed);

@@ -18,20 +18,30 @@ describe("resolveProvider", () => {
 });
 
 describe("defaultProviderAfterSave", () => {
-  it("既定が未設定なら保存したプロバイダを既定にする", () => {
-    expect(defaultProviderAfterSave(undefined, "openai", { anthropic: false, openai: true })).toBe(
-      "openai",
-    );
+  it("最初に登録したキーのプロバイダを既定にする", () => {
+    expect(defaultProviderAfterSave(undefined, "openai", none)).toBe("openai");
   });
 
   it("既定のプロバイダにキーがあれば変えない", () => {
-    expect(defaultProviderAfterSave("anthropic", "openai", both)).toBeUndefined();
+    expect(
+      defaultProviderAfterSave("anthropic", "openai", { anthropic: true, openai: false }),
+    ).toBeUndefined();
     expect(defaultProviderAfterSave("openai", "openai", both)).toBeUndefined();
   });
 
+  it("既定が未保存でも、キーを登録済みのプロバイダがあればそれを維持して書き込む（M1 からの移行）", () => {
+    expect(defaultProviderAfterSave(undefined, "openai", { anthropic: true, openai: false })).toBe(
+      "anthropic",
+    );
+  });
+
   it("既定のプロバイダのキーが削除済みなら、保存したプロバイダを既定にする", () => {
+    expect(defaultProviderAfterSave("anthropic", "openai", none)).toBe("openai");
+  });
+
+  it("既定のプロバイダのキーが削除済みで、他に登録済みのキーがあればそれを使う", () => {
     expect(
-      defaultProviderAfterSave("anthropic", "openai", { anthropic: false, openai: true }),
+      defaultProviderAfterSave("anthropic", "anthropic", { anthropic: false, openai: true }),
     ).toBe("openai");
   });
 });

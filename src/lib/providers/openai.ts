@@ -29,9 +29,12 @@ const MODEL_OPTIONS: Record<string, ModelOptions> = {
  */
 const TEXT_MODEL_PATTERN = /^(gpt-\d+(\.\d+)?o?|o\d+)(-[a-z]+)*(-\d{4}-\d{2}-\d{2})?$/;
 
-/** 許可パターンに一致しても要約に使わないもの（音声・画像・検索・コーディング専用・pro 等） */
+/**
+ * 許可パターンに一致しても要約に使わないもの（音声・画像・検索・コーディング専用・pro 等）。
+ * `preview` は一律に除かない（`o1-preview` 等のテキストモデルがあるため。音声・検索等の preview は種別の語で除く）
+ */
 const NON_TEXT_MODEL_PATTERN =
-  /(audio|realtime|image|transcribe|tts|search|embedding|moderation|instruct|codex|computer|research|preview|-pro)(-|$)/;
+  /(audio|realtime|image|transcribe|tts|search|embedding|moderation|instruct|codex|computer|research|-pro)(-|$)/;
 
 export function isTextGenerationModel(id: string): boolean {
   return TEXT_MODEL_PATTERN.test(id) && !NON_TEXT_MODEL_PATTERN.test(id);
