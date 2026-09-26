@@ -14,7 +14,8 @@ web 版 Claude Code と web 版 Codex のどちらで作業しても、同じ版
 
 - 版はすべてリポジトリ内のファイルから決まる。`.node-version` / `packageManager` / `pnpm-lock.yaml` を更新すれば、次のセットアップで両環境とも追従する。
 - 実行は冪等・非対話。揃っているものは取得しないため、2 回目以降は 1 秒未満で終わる（`pnpm install` の確認のみ）。
-- 最後に `--check` と同じ検査（Node.js・pnpm の版、依存、Chromium の起動）を行い、Node.js・pnpm・依存が揃っていなければ終了コード 1 で失敗する。Chromium は E2E にだけ使うため、起動できなくても警告にとどめる。
+- 最後に `--check` と同じ検査（Node.js・pnpm の版、依存、Chromium の起動）を行い、Node.js・pnpm・依存が揃っていなければ終了コード 1 で失敗する。Chromium は E2E にだけ使うため、起動できなくても（依存ライブラリを入れられなかった場合も）警告にとどめる。
+- 依存の検査はオフラインでも行えるよう pnpm には問い合わせず、このスクリプトで `pnpm install` したときの `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml` のハッシュ（`node_modules/.aicm-deps.sha256`）と比べる。ブランチの切り替えなどでこれらが変わったら、スクリプトを実行し直す（手で `pnpm install` しただけでは `--check` は `NG` のまま）。
 
 ```bash
 bash scripts/setup-dev-env.sh          # セットアップ（冪等）

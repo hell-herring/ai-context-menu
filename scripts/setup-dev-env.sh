@@ -22,6 +22,8 @@ NODE_MIRROR="${AICM_NODE_MIRROR:-https://nodejs.org/dist}"
 ENV_SCRIPT="$DEV_HOME/env.sh"
 PROFILE_MARKER="# ai-context-menu dev env"
 CHROMIUM_FALLBACK_MARKER="# chromium-fallback:"
+# 依存を入れたときの package.json / pnpm-lock.yaml / pnpm-workspace.yaml のハッシュ（node_modules を消せば一緒に消える）
+DEPS_STAMP="$ROOT_DIR/node_modules/.aicm-deps.sha256"
 
 MODE="setup"
 case "${1:-}" in
@@ -53,6 +55,10 @@ case "$(uname -s)-$(uname -m)" in
   Linux-aarch64 | Linux-arm64) NODE_PLATFORM="linux-arm64" ;;
   *) fail "未対応の OS/CPU です: $(uname -s)-$(uname -m)（Linux x64 / arm64 のみ）" ;;
 esac
+
+deps_hash() {
+  cat "$ROOT_DIR/package.json" "$ROOT_DIR/pnpm-lock.yaml" "$ROOT_DIR/pnpm-workspace.yaml" | sha256sum | cut -d " " -f 1
+}
 
 node_major_of() { "$1" -p 'process.versions.node.split(".")[0]' 2>/dev/null || true; }
 
@@ -188,7 +194,9 @@ install_chromium() {
   if (cd "$ROOT_DIR" && env -u PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD pnpm exec playwright install chromium >&2); then
     if ! PLAYWRIGHT_CHROMIUM_EXECUTABLE="" chromium_works && can_install_os_deps; then
       log "Chromium の依存ライブラリを入れます（pnpm exec playwright install-deps chromium）"
-      (cd "$ROOT_DIR" && pnpm exec playwright install-deps chromium >&2)
+      # apt のリポジトリに出られない等で失敗しても、セットアップは止めずに下の代替を探す
+      (cd "$ROOT_DIR" && pnpm exec playwright install-deps chromium >&2) ||
+        log "WARN Chromium の依存ライブラリを入れられませんでした"
     fi
     if PLAYWRIGHT_CHROMIUM_EXECUTABLE="" chromium_works; then
       set_chromium_fallback ""
@@ -224,10 +232,12 @@ check() {
     log "NG   pnpm $pnpm_version（$PNPM_VERSION が必要）"
     ok=1
   fi
-  if [[ -d "$ROOT_DIR/node_modules/.pnpm" && -d "$ROOT_DIR/.wxt" ]]; then
-    log "OK   依存（node_modules / .wxt）"
+  # オフライン（Codex のエージェント実行中など）でも検査できるよう、pnpm には問い合わせず、
+  # このスクリプトで入れたときの package.json / pnpm-lock.yaml / pnpm-workspace.yaml と比べる
+  if [[ -f "$DEPS_STAMP" && "$(cat "$DEPS_STAMP")" == "$(deps_hash)" && -d "$ROOT_DIR/.wxt" ]]; then
+    log "OK   依存（pnpm-lock.yaml と一致）"
   else
-    log "NG   依存が未導入です（pnpm install --frozen-lockfile）"
+    log "NG   依存が未導入か、package.json / pnpm-lock.yaml の変更後に入れ直していません（bash scripts/setup-dev-env.sh）"
     ok=1
   fi
   # Chromium は E2E にだけ使うため、なくても失敗にはしない（環境のセットアップ自体は止めない）
@@ -268,6 +278,7 @@ if [[ "$MODE" == "setup" ]]; then
   fi
   log "依存を入れます（pnpm install --frozen-lockfile）"
   (cd "$ROOT_DIR" && pnpm install --frozen-lockfile >&2)
+  deps_hash >"$DEPS_STAMP"
   install_chromium
 fi
 
