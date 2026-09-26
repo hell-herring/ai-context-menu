@@ -71,15 +71,19 @@ jobs:
           TAG: ${{ github.ref_name }}
           ZIP: ${{ steps.package.outputs.zip }}
         run: |
+          prerelease=()
+          if [[ "$TAG" == *-* ]]; then
+            prerelease=(--prerelease)
+          fi
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release upload "$TAG" "$ZIP" SHA256SUMS.txt \
               --repo "$GITHUB_REPOSITORY" \
               --clobber
+            # 既存のリリースでも、`-` を含むタグはプレリリースにそろえる
+            if (( ${#prerelease[@]} )); then
+              gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" "${prerelease[@]}"
+            fi
             exit 0
-          fi
-          prerelease=()
-          if [[ "$TAG" == *-* ]]; then
-            prerelease=(--prerelease)
           fi
           gh release create "$TAG" "$ZIP" SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \
