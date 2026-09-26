@@ -7,8 +7,9 @@ import {
   removeApiKey,
   setApiKey,
 } from "../../lib/storage/secrets";
+import { ExcludedDomainsSection } from "./ExcludedDomainsSection";
 
-// M1 の最小設定画面: Anthropic の API キーの保存・削除のみ。接続テスト・モデル選択などは M2 で追加する
+// 設定画面: Anthropic の API キーの保存・削除と除外ドメイン。接続テスト・モデル選択などは M2 で追加する
 
 type Notice = { key: MessageKey; error: boolean };
 
@@ -21,7 +22,7 @@ export function App() {
   useEffect(() => {
     getApiKey("anthropic")
       .then((key) => setStored(key === undefined ? undefined : maskApiKey(key)))
-      .catch(() => setNotice({ key: "optionsSaveFailed", error: true }));
+      .catch(() => setNotice({ key: "optionsLoadFailed", error: true }));
   }, []);
 
   const save = async (event: FormEvent) => {
@@ -103,6 +104,8 @@ export function App() {
           {notice && t(notice.key)}
         </p>
       </section>
+
+      <ExcludedDomainsSection />
     </main>
   );
 }

@@ -1,3 +1,4 @@
+import { isExcludedPage, isExcludedUrl } from "../domain/exclude";
 import { PageExtractionSchema, SelectionExtractionSchema } from "../extract/schema";
 import type { Job } from "../storage/schema";
 import {
@@ -28,6 +29,8 @@ export interface PrepareJobDeps {
   runScript(file: InjectedScript, target: { tabId: number; frameId: number }): Promise<unknown>;
   /** 設定の最大入力文字数 */
   getMaxInputChars(): Promise<number>;
+  /** 設定の除外ドメイン（正規化済みのパターン） */
+  getExcludedDomains(): Promise<string[]>;
 }
 
 /**
@@ -39,6 +42,11 @@ export async function prepareJob(
   context: JobContext,
   deps: PrepareJobDeps,
 ): Promise<Job> {
+  // 除外ドメインはコンテンツを取得する前に、ページ URL とフレーム URL の両方で判定する
+  const excludedDomains = await deps.getExcludedDomains();
+  if (isExcludedPage(context, excludedDomains)) {
+    return createErrorJob(context, "excludedDomain");
+  }
   // 入力欄・contenteditable 内の選択は送らない
   if (target.editable) {
     return createErrorJob(context, "editable");
@@ -50,6 +58,10 @@ export async function prepareJob(
     : await extractPage(target, deps);
   if (content === "editable" || content === "unreadablePage") {
     return createErrorJob(context, content);
+  }
+  // クリック後に除外ドメインへ遷移していた場合も送らない（取得した文書の URL でも判定する）
+  if (isExcludedUrl(content.url, excludedDomains)) {
+    return createErrorJob(context, "excludedDomain");
   }
 
   const source = createJobSource(content, await deps.getMaxInputChars());

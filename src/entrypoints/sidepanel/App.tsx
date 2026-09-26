@@ -10,12 +10,14 @@ import { type PanelState, type Phase, useSummary } from "./use-summary";
 const JOB_ERROR_MESSAGES = {
   editable: "errorEditable",
   unreadablePage: "errorUnreadablePage",
+  excludedDomain: "errorExcludedDomain",
   emptyContent: "errorEmptyContent",
   tooLarge: "errorTooLarge",
 } as const satisfies Record<JobErrorCode, MessageKey>;
 
 const PHASE_ERROR_MESSAGES = {
   apiKeyMissing: "errorApiKeyMissing",
+  excludedDomain: "errorExcludedDomain",
   auth: "errorAuth",
   rate_limit: "errorRateLimit",
   overloaded: "errorOverloaded",

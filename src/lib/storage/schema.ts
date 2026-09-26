@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_EXCLUDED_DOMAINS } from "../domain/exclude";
 import { PRESET_IDS } from "../prompt/presets";
 
 // ストレージに置く値のスキーマ。読み出した値は必ずここで検証してから使う（docs/guardrails.md §5）
@@ -23,6 +24,18 @@ export const CoreSettingsSchema = z.object({
 });
 
 export type CoreSettings = z.infer<typeof CoreSettingsSchema>;
+
+// ---------------------------------------------------------------------------
+// 除外ドメイン（storage.sync `settings.excludedDomains`）。増えうる一覧なので core とは別キー
+// ---------------------------------------------------------------------------
+
+export const ExcludedDomainsSchema = z.object({
+  version: z.literal(1),
+  /** 正規化済みのパターン（`example.com` / `*.example.com`） */
+  domains: z.array(z.string().min(1).max(255)).max(MAX_EXCLUDED_DOMAINS),
+});
+
+export type ExcludedDomains = z.infer<typeof ExcludedDomainsSchema>;
 
 // ---------------------------------------------------------------------------
 // 要約ジョブ（storage.session `job.<windowId>`）。docs/tech-stack.md §4.2
@@ -54,6 +67,8 @@ export const JOB_ERROR_CODES = [
   "editable",
   /** chrome:// 等、拡張から読み取れないページ */
   "unreadablePage",
+  /** 除外ドメインに一致するページ・フレーム */
+  "excludedDomain",
   /** 要約するテキストがない */
   "emptyContent",
   /** ジョブが大きすぎて受け渡せない */

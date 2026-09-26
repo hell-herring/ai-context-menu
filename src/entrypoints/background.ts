@@ -6,7 +6,7 @@ import type { JobContext } from "../lib/job/create";
 import { type ClickTarget, type PrepareJobDeps, prepareJob } from "../lib/job/prepare";
 import type { PresetId } from "../lib/prompt/presets";
 import { JobWriter } from "../lib/storage/session";
-import { getCoreSettings } from "../lib/storage/settings";
+import { getCoreSettings, getExcludedDomains } from "../lib/storage/settings";
 
 export default defineBackground(() => {
   const jobs = new JobWriter();
@@ -73,6 +73,7 @@ const prepareJobDeps: PrepareJobDeps = {
   async getMaxInputChars() {
     return (await getCoreSettings()).maxInputChars;
   },
+  getExcludedDomains,
 };
 
 function clickTarget(

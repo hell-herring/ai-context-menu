@@ -152,6 +152,9 @@
   "errorUnreadablePage": {
     "message": "This page cannot be read by the extension"
   },
+  "errorExcludedDomain": {
+    "message": "This site is excluded in the settings"
+  },
   "errorEmptyContent": {
     "message": "There is no text to summarize"
   },
@@ -201,5 +204,47 @@
   },
   "optionsDataNote": {
     "message": "When you summarize, the page title, URL (without query or fragment) and content are sent to Anthropic. Data is sent only when you click a menu item or a button such as Regenerate."
+  },
+  "optionsLoadFailed": {
+    "message": "Failed to load the settings"
+  },
+  "optionsExcludedHeading": {
+    "message": "Excluded domains"
+  },
+  "optionsExcludedDescription": {
+    "message": "On matching sites, page content is never read or sent (including when the site is embedded in another page). *.example.com matches example.com and its subdomains. Up to $MAX$ entries.",
+    "placeholders": {
+      "max": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsExcludedLabel": {
+    "message": "Domains to exclude (one per line)"
+  },
+  "optionsExcludedPlaceholder": {
+    "message": "*.bank.example\nintranet.example.com"
+  },
+  "optionsExcludedInvalid": {
+    "message": "These lines are not valid domains: $LINES$",
+    "placeholders": {
+      "lines": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsExcludedTooMany": {
+    "message": "You can exclude up to $MAX$ domains",
+    "placeholders": {
+      "max": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsSyncItemQuota": {
+    "message": "This exceeds the storage limit. Reduce the number or length of entries"
+  },
+  "optionsSyncTotalQuota": {
+    "message": "Synced settings exceed the total storage limit. Remove settings you no longer need"
   }
 }

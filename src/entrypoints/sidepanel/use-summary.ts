@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { browser } from "wxt/browser";
+import { isExcludedPage, isExcludedUrl } from "../../lib/domain/exclude";
 import { JobReceiver } from "../../lib/job/receive";
 import { buildPrompt, describeOutputLanguage } from "../../lib/prompt/build";
 import { PROVIDERS } from "../../lib/providers/registry";
@@ -12,7 +13,7 @@ import {
 import type { ContentJob, Job, JobErrorCode } from "../../lib/storage/schema";
 import { getApiKey } from "../../lib/storage/secrets";
 import { readJob, removeJob, watchJob } from "../../lib/storage/session";
-import { getCoreSettings } from "../../lib/storage/settings";
+import { getCoreSettings, getExcludedDomains } from "../../lib/storage/settings";
 
 export type Phase =
   | { kind: "confirm" }
@@ -20,7 +21,7 @@ export type Phase =
   | { kind: "streaming" }
   | { kind: "done"; stopReason: StopReason; usage: Usage | undefined }
   | { kind: "stopped" }
-  | { kind: "error"; error: ProviderErrorKind | "apiKeyMissing" };
+  | { kind: "error"; error: ProviderErrorKind | "apiKeyMissing" | "excludedDomain" };
 
 export type PanelState =
   | { kind: "idle" }
@@ -75,7 +76,20 @@ export function useSummary() {
       };
 
       try {
-        const [apiKey, settings] = await Promise.all([getApiKey("anthropic"), getCoreSettings()]);
+        const [apiKey, settings, excludedDomains] = await Promise.all([
+          getApiKey("anthropic"),
+          getCoreSettings(),
+          getExcludedDomains(),
+        ]);
+        // 確認待ち・再生成の間に除外ドメインが追加された場合も送らない。
+        // プロバイダ呼び出しの直前に、その時点の設定で毎回判定する（docs/guardrails.md §2）
+        if (
+          isExcludedPage(job, excludedDomains) ||
+          isExcludedUrl(job.source.displayUrl, excludedDomains)
+        ) {
+          update({ phase: { kind: "error", error: "excludedDomain" } });
+          return;
+        }
         if (!apiKey) {
           update({ phase: { kind: "error", error: "apiKeyMissing" } });
           return;
@@ -83,7 +97,6 @@ export function useSummary() {
         const model = settings.models.anthropic;
         update({ model });
 
-        // M2: ここ（プロバイダ呼び出しの直前）で除外ドメインをその時点の設定で再判定する
         const prompt = buildPrompt({
           presetId: job.presetId,
           outputLanguage: describeOutputLanguage(

@@ -61,7 +61,8 @@ Node.js は `.node-version`（26）、pnpm は `package.json` の `packageManage
 - `src/lib/providers/` — `Provider` インターフェイス（`listModels` / `verifyKey` / `stream`）とプロバイダ別アダプタ。UI は SDK 型に直接依存しない。
 - `src/lib/prompt/` — プロンプト生成（純粋関数・スナップショットテスト対象）、XML エスケープとエスケープ後の文字数計算、トークン概算。
 - `src/lib/job/` — ジョブの組み立て（上限超過・メタデータ短縮の判定、送信用 URL）、クリックからジョブを作る判定（`prepare.ts`。入力欄・選択/本文の振り分け・フォールバック。Chrome API は引数で受け取る）と、サイドパネルでの受信判定（重複・古い・期限切れ）。
-- `src/lib/storage/` — zod スキーマ付きのストレージアクセス（`schema.ts` / `settings.ts` / `secrets.ts` / `session.ts`）。直接 `chrome.storage` を触らずここを経由する。`job.<windowId>` への書き込みは `JobWriter`（世代確認・直列キュー）を必ず通す。
+- `src/lib/storage/` — zod スキーマ付きのストレージアクセス（`schema.ts` / `settings.ts` / `secrets.ts` / `session.ts`）。直接 `chrome.storage` を触らずここを経由する。`job.<windowId>` への書き込みは `JobWriter`（世代確認・直列キュー）を必ず通す。`storage.sync` への書き込みは `sync-quota.ts` の `setSyncItem()`（UTF-8 バイト数の検査）を通す。
+- `src/lib/domain/` — 除外ドメインのパターン正規化と判定（ページ URL・フレーム URL の両方）。background（取得前）とサイドパネル（プロバイダ呼び出しの直前に毎回）で使う。
 - `src/components/MarkdownView.tsx` — AI 出力の安全な描画（生 HTML 無効・http(s) のリンクのみ・画像はリンクに置換）。
 
 詳細は [docs/tech-stack.md §4](./docs/tech-stack.md#4-アーキテクチャ)。

@@ -152,6 +152,9 @@
   "errorUnreadablePage": {
     "message": "このページは拡張から読み取れません"
   },
+  "errorExcludedDomain": {
+    "message": "このサイトは除外設定されています"
+  },
   "errorEmptyContent": {
     "message": "要約するテキストがありません"
   },
@@ -201,5 +204,47 @@
   },
   "optionsDataNote": {
     "message": "要約を実行すると、ページのタイトル・URL（クエリやフラグメントを除く）・本文が Anthropic に送信されます。送信はメニューのクリックや再生成ボタンなどの操作時のみ行われます。"
+  },
+  "optionsLoadFailed": {
+    "message": "設定を読み込めませんでした"
+  },
+  "optionsExcludedHeading": {
+    "message": "除外ドメイン"
+  },
+  "optionsExcludedDescription": {
+    "message": "一致するサイトでは、ページの内容を取得・送信しません（そのサイトが別のページに埋め込まれている場合も含みます）。*.example.com と書くと example.com とそのサブドメインに一致します。最大 $MAX$ 件。",
+    "placeholders": {
+      "max": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsExcludedLabel": {
+    "message": "除外するドメイン（1 行に 1 つ）"
+  },
+  "optionsExcludedPlaceholder": {
+    "message": "*.bank.example\nintranet.example.co.jp"
+  },
+  "optionsExcludedInvalid": {
+    "message": "次の行はドメインとして解釈できません: $LINES$",
+    "placeholders": {
+      "lines": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsExcludedTooMany": {
+    "message": "除外ドメインは最大 $MAX$ 件までです",
+    "placeholders": {
+      "max": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsSyncItemQuota": {
+    "message": "保存できる容量を超えています。件数や長さを減らしてください"
+  },
+  "optionsSyncTotalQuota": {
+    "message": "同期される設定の合計容量を超えています。不要な設定を減らしてください"
   }
 }

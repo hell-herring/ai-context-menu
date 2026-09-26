@@ -44,10 +44,42 @@ function createDeps(runScript: PrepareJobDeps["runScript"]) {
   return {
     runScript: vi.fn(runScript),
     getMaxInputChars: vi.fn(async () => 50_000),
+    getExcludedDomains: vi.fn(async (): Promise<string[]> => []),
   } satisfies PrepareJobDeps;
 }
 
 describe("prepareJob", () => {
+  it.each([
+    ["ページ URL", context],
+    [
+      "フレーム URL",
+      { ...context, pageUrl: "https://news.example/", frameUrl: "https://example.com/" },
+    ],
+  ])("%s が除外ドメインに一致したらスクリプトを注入せずエラーにする", async (_label, ctx) => {
+    const deps = createDeps(async () => page);
+    deps.getExcludedDomains.mockResolvedValue(["*.example.com"]);
+    const job = await prepareJob(selectionTarget, ctx, deps);
+
+    expect(job).toMatchObject({ kind: "error", error: "excludedDomain" });
+    expect(JSON.stringify(job)).not.toContain("選択 テキスト");
+    expect(deps.runScript).not.toHaveBeenCalled();
+  });
+
+  it("クリック後に除外ドメインへ遷移していたら、取得した内容を送らない", async () => {
+    const deps = createDeps(async () => ({ ...page, url: "https://login.bank.example/" }));
+    deps.getExcludedDomains.mockResolvedValue(["*.bank.example"]);
+    const job = await prepareJob(pageTarget, context, deps);
+
+    expect(job).toMatchObject({ kind: "error", error: "excludedDomain" });
+    expect(JSON.stringify(job)).not.toContain("ページ本文");
+  });
+
+  it("除外ドメインに一致しなければ取得する", async () => {
+    const deps = createDeps(async () => page);
+    deps.getExcludedDomains.mockResolvedValue(["bank.example"]);
+    expect(await prepareJob(pageTarget, context, deps)).toMatchObject({ kind: "content" });
+  });
+
   it("入力欄内のクリックはスクリプトを注入せずエラーにする", async () => {
     const deps = createDeps(async () => page);
     const job = await prepareJob({ ...selectionTarget, editable: true }, context, deps);
