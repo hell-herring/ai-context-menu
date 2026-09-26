@@ -23,6 +23,7 @@ AI コーディングエージェント（Claude Code, Codex, Copilot 等）向�
 | [docs/spec.md](./docs/spec.md) | 機能仕様・ユーザーストーリー・マイルストーン・決定事項/未決事項 |
 | [docs/tech-stack.md](./docs/tech-stack.md) | 技術選定・権限・ストレージ・アーキテクチャ・テスト戦略 |
 | [docs/guardrails.md](./docs/guardrails.md) | セキュリティ/プライバシー/開発プロセスの制約（**違反不可**） |
+| [docs/dev-environment.md](./docs/dev-environment.md) | web 版 Claude Code / Codex の開発環境の定義・設定・制約 |
 
 ## 技術スタック（要約）
 
@@ -31,6 +32,7 @@ WXT（Vite）/ TypeScript strict / React / Tailwind CSS v4 / react-markdown / @m
 ## コマンド
 
 ```bash
+bash scripts/setup-dev-env.sh  # 開発環境（Node.js・pnpm・依存・E2E 用 Chromium）を揃える。冪等。--check で検査のみ
 pnpm install          # 依存導入（CI は --frozen-lockfile）。postinstall で wxt prepare が走る
 pnpm dev              # 開発サーバー（拡張を読み込んだ Chrome を起動）
 pnpm build            # 本番ビルド → .output/chrome-mv3
@@ -49,7 +51,8 @@ pnpm test:e2e         # build:e2e 後に実行。Playwright（tests/e2e/）。�
 
 `test:e2e` は Playwright の Chromium を使う（`pnpm exec playwright install chromium`）。インストール済みの Chromium を使う場合は `PLAYWRIGHT_CHROMIUM_EXECUTABLE` にパスを指定する。
 
-Node.js は `.node-version`（26）、pnpm は `package.json` の `packageManager`（12.x）に合わせる。pnpm の設定は `pnpm-workspace.yaml` に書く（pnpm 11 以降 `.npmrc` は認証・レジストリ以外を読まない）。
+Node.js は `.node-version`（26）、pnpm は `package.json` の `packageManager`（12.x）に合わせる。
+web 版 Claude Code / web 版 Codex では `scripts/setup-dev-env.sh` がこれらを揃える（Claude Code は `.claude/settings.json` の SessionStart フックで自動実行、Codex は環境設定のセットアップスクリプトに指定）。`node --version` が 26 でなければ `bash scripts/setup-dev-env.sh` を実行し、新しいシェルで作業する。詳細は [docs/dev-environment.md](./docs/dev-environment.md)。環境の構成を変えたら、スクリプト・同ドキュメント・`.github/workflows/dev-env.yml` をまとめて更新する。pnpm の設定は `pnpm-workspace.yaml` に書く（pnpm 11 以降 `.npmrc` は認証・レジストリ以外を読まない）。
 - 依存は `^` / `~` なしの固定バージョン（`saveExact: true`）。`pnpm add pkg@24` のように範囲で指定すると `^` が付くので、`pnpm add pkg@24.13.6` と完全な版を指定する。`tests/unit/package-json.test.ts` で検査している。
 - `minimumReleaseAge: 1440` により、公開から 24 時間未満の版は導入できない（サプライチェーン対策。緩めない）。
 
