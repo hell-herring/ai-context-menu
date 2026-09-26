@@ -17,5 +17,192 @@
   },
   "sidePanelEmpty": {
     "message": "ページ上で右クリックし、「AI Context Menu」から要約を選んでください。"
+  },
+  "sidePanelWaiting": {
+    "message": "ページの内容を取得しています…"
+  },
+  "sourcePage": {
+    "message": "ページ本文"
+  },
+  "sourceSelection": {
+    "message": "選択テキスト"
+  },
+  "sourceChars": {
+    "message": "$COUNT$ 文字",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "sourceUntitled": {
+    "message": "（タイトルなし）"
+  },
+  "sourceTruncatedContent": {
+    "message": "本文を上限の $LIMIT$ 文字まで切り詰めて送信",
+    "placeholders": {
+      "limit": {
+        "content": "$1"
+      }
+    }
+  },
+  "sourceTruncatedMetadata": {
+    "message": "長すぎるタイトル・URL を短縮して送信"
+  },
+  "sourceUrlNotSent": {
+    "message": "URL は送信しません（http/https 以外）"
+  },
+  "oversizeTitle": {
+    "message": "送信内容が上限を超えています"
+  },
+  "oversizeContent": {
+    "message": "本文 $ORIGINAL$ 文字（上限 $LIMIT$ 文字）。先頭から上限までを送信すると推定 $TOKENS$ トークンです。",
+    "placeholders": {
+      "original": {
+        "content": "$1"
+      },
+      "limit": {
+        "content": "$2"
+      },
+      "tokens": {
+        "content": "$3"
+      }
+    }
+  },
+  "oversizeMetadata": {
+    "message": "タイトルまたは URL が長すぎるため短縮されます。"
+  },
+  "buttonSendTruncated": {
+    "message": "先頭から上限まで送信"
+  },
+  "buttonCancel": {
+    "message": "キャンセル"
+  },
+  "buttonStop": {
+    "message": "停止"
+  },
+  "buttonRegenerate": {
+    "message": "再生成"
+  },
+  "buttonCopy": {
+    "message": "コピー"
+  },
+  "buttonOpenOptions": {
+    "message": "設定を開く"
+  },
+  "copied": {
+    "message": "コピーしました"
+  },
+  "copyFailed": {
+    "message": "コピーできませんでした"
+  },
+  "statusStreaming": {
+    "message": "生成中…"
+  },
+  "statusDone": {
+    "message": "完了しました"
+  },
+  "statusStopped": {
+    "message": "停止しました"
+  },
+  "statusCancelled": {
+    "message": "送信をキャンセルしました"
+  },
+  "statusMaxTokens": {
+    "message": "出力上限に達したため途中で終了しました"
+  },
+  "statusRefusal": {
+    "message": "モデルが回答を拒否しました"
+  },
+  "usageTokens": {
+    "message": "入力 $INPUT$ / 出力 $OUTPUT$ トークン",
+    "placeholders": {
+      "input": {
+        "content": "$1"
+      },
+      "output": {
+        "content": "$2"
+      }
+    }
+  },
+  "errorApiKeyMissing": {
+    "message": "API キーを設定してください"
+  },
+  "errorAuth": {
+    "message": "API キーが無効か、権限がありません"
+  },
+  "errorRateLimit": {
+    "message": "レート制限に達しました。しばらく待って再試行してください"
+  },
+  "errorOverloaded": {
+    "message": "プロバイダ側で一時的なエラーが発生しました"
+  },
+  "errorNetwork": {
+    "message": "接続できませんでした"
+  },
+  "errorBadRequest": {
+    "message": "リクエストが受け付けられませんでした"
+  },
+  "errorUnknown": {
+    "message": "エラーが発生しました"
+  },
+  "errorEditable": {
+    "message": "入力欄内のテキストは要約できません"
+  },
+  "errorSelectionUnsupported": {
+    "message": "選択テキストの要約にはまだ対応していません。選択を解除してからページ上で右クリックしてください"
+  },
+  "errorUnreadablePage": {
+    "message": "このページは拡張から読み取れません"
+  },
+  "errorEmptyContent": {
+    "message": "要約するテキストがありません"
+  },
+  "errorTooLarge": {
+    "message": "ページが大きすぎるため処理できませんでした"
+  },
+  "optionsTitle": {
+    "message": "AI Context Menu の設定"
+  },
+  "optionsAnthropicHeading": {
+    "message": "Anthropic（Claude）"
+  },
+  "optionsApiKeyLabel": {
+    "message": "API キー"
+  },
+  "optionsKeyStored": {
+    "message": "保存済み: $KEY$",
+    "placeholders": {
+      "key": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsKeyNotStored": {
+    "message": "未設定"
+  },
+  "optionsSave": {
+    "message": "保存"
+  },
+  "optionsDelete": {
+    "message": "削除"
+  },
+  "optionsSaved": {
+    "message": "保存しました"
+  },
+  "optionsDeleted": {
+    "message": "削除しました"
+  },
+  "optionsInvalidKey": {
+    "message": "API キーの形式が正しくありません"
+  },
+  "optionsSaveFailed": {
+    "message": "保存に失敗しました"
+  },
+  "optionsStorageNote": {
+    "message": "API キーはこのブラウザ内（chrome.storage.local）に暗号化されずに保存され、Anthropic の API にのみ送信されます。利用上限を設定したキーの使用をおすすめします。"
+  },
+  "optionsDataNote": {
+    "message": "要約を実行すると、ページのタイトル・URL（クエリやフラグメントを除く）・本文が Anthropic に送信されます。送信はメニューのクリックや再生成ボタンなどの操作時のみ行われます。"
   }
 }

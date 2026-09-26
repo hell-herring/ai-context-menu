@@ -6,7 +6,7 @@ import { App } from "./App";
 import "../../styles/app.css";
 
 document.documentElement.lang = browser.i18n.getUILanguage();
-document.title = t("extName");
+document.title = t("optionsTitle");
 
 const root = document.getElementById("root");
 if (!root) {

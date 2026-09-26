@@ -17,8 +17,8 @@ export default defineConfig({
     description: "__MSG_extDescription__",
     default_locale: "ja",
     minimum_chrome_version: "116",
-    // M0 で必要な権限のみ。activeTab / scripting / storage / host_permissions は
-    // 使用するマイルストーン（M1 以降）で docs/tech-stack.md §2 の一覧から追加する。
-    permissions: ["contextMenus", "sidePanel"],
+    // M1 までに必要な権限のみ。OpenAI の host_permissions は M2 で docs/tech-stack.md §2 の一覧から追加する。
+    permissions: ["contextMenus", "sidePanel", "activeTab", "scripting", "storage"],
+    host_permissions: ["https://api.anthropic.com/*"],
   },
 });

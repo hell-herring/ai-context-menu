@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>テスト記事 - Example News</title>
+    <style>
+      .visually-hidden-by-class { display: none; }
+      .invisible { visibility: hidden; }
+    </style>
+    <script>window.secret = "SCRIPT_CONTENT";</script>
+  </head>
+  <body>
+    <!-- ASP.NET 等のようにページ全体を form で囲んでも本文は消えない -->
+    <form id="aspnetForm">
+      <header><nav><a href="/">ホーム</a> <a href="/news">ニュース</a></nav></header>
+      <main>
+        <article>
+          <h1>テスト記事の見出し</h1>
+          <p>最初の段落です。この記事は抽出処理のテストのために書かれています。十分な長さの本文がないと Readability が記事として認識しないため、同じような文章を何度か繰り返しています。</p>
+          <p>二番目の段落です。ここには記事の重要な論点が書かれています。抽出結果には段落の区切りが改行として残る必要があります。Readability が本文を正しく選べるように、句読点を含む文章を十分に用意します。</p>
+          <p>三番目の段落です。<span style="display: none">INLINE_HIDDEN</span>表示されていない要素は送信してはいけません。<span class="visually-hidden-by-class">CLASS_HIDDEN</span><span hidden>ATTR_HIDDEN</span><span class="invisible">VISIBILITY_HIDDEN</span>ここまでが三番目の段落です。</p>
+          <div style="content-visibility: hidden">CONTENT_VISIBILITY_HIDDEN</div>
+          <p>検索: <input type="text" value="INPUT_VALUE" /> <textarea>TEXTAREA_VALUE</textarea>
+            <select><option selected>OPTION_VALUE</option></select></p>
+          <div contenteditable="true">EDITABLE_DRAFT</div>
+          <div contenteditable="false">NOT_EDITABLE_TEXT は本文として残る。</div>
+          <pre>  コード
+    インデント</pre>
+          <p>最後の段落です。記事はここで終わります。十分な長さを確保するための文章をもう少し続けます。これで本文の抽出が安定して行われるはずです。</p>
+        </article>
+      </main>
+      <footer>© Example News</footer>
+    </form>
+  </body>
+</html>

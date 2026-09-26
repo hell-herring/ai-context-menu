@@ -36,9 +36,9 @@ describe("本番ビルドの manifest", () => {
     }).toEqual({
       manifest_version: 3,
       minimum_chrome_version: "116",
-      permissions: ["contextMenus", "sidePanel"],
+      permissions: ["contextMenus", "sidePanel", "activeTab", "scripting", "storage"],
       optional_permissions: undefined,
-      host_permissions: undefined,
+      host_permissions: ["https://api.anthropic.com/*"],
       optional_host_permissions: undefined,
       content_security_policy: undefined,
       content_scripts: undefined,
@@ -47,10 +47,16 @@ describe("本番ビルドの manifest", () => {
     });
   });
 
-  it("サイドパネルと既定ロケールが設定されている", async () => {
+  it("サイドパネル・設定画面・既定ロケールが設定されている", async () => {
     const manifest = await readManifest();
     expect(manifest.side_panel).toEqual({ default_path: "sidepanel.html" });
+    expect(manifest.options_ui).toEqual({ page: "options.html", open_in_tab: true });
     expect(manifest.default_locale).toBe("ja");
+  });
+
+  it("注入用の抽出スクリプトが出力されている（ページからは読み込めない）", async () => {
+    const files = (await listFiles(OUTPUT_DIR)).map((file) => path.relative(OUTPUT_DIR, file));
+    expect(files).toContain("extract.js");
   });
 });
 
