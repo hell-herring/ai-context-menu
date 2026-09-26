@@ -217,9 +217,18 @@ install_chromium() {
 }
 
 check() {
-  local ok=0 node_version pnpm_version
+  local ok=0 node_version pnpm_version pnpm_path managed_bin
   node_version="$(node --version 2>/dev/null || echo none)"
-  pnpm_version="$(pnpm --version 2>/dev/null || echo none)"
+  # 管理外の pnpm（corepack のシムなど）は --version でも packageManager の版を取得しに行くことがあるため、
+  # このスクリプトで入れた pnpm のときだけ実行する
+  pnpm_path="$(command -v pnpm || true)"
+  managed_bin="$(installed_node_bin)"
+  if [[ -n "$managed_bin" && "$pnpm_path" == "$managed_bin/pnpm" ]]; then
+    pnpm_version="$(pnpm --version 2>/dev/null || echo none)"
+  else
+    pnpm_version="${pnpm_path:+管理外（$pnpm_path）}"
+    pnpm_version="${pnpm_version:-none}"
+  fi
   if [[ "$node_version" == "v${NODE_MAJOR}."* ]]; then
     log "OK   Node.js $node_version"
   else
@@ -272,7 +281,8 @@ if [[ -f "$ENV_SCRIPT" ]]; then
 fi
 
 if [[ "$MODE" == "setup" ]]; then
-  if [[ "$(command -v pnpm || true)" != "$NODE_BIN/pnpm" || "$(pnpm --version 2>/dev/null || true)" != "$PNPM_VERSION" ]]; then
+  # 管理外の pnpm は実行しない（上の check と同じ理由）ため、場所を先に確かめてから版を見る
+  if [[ "$(command -v pnpm || true)" != "$NODE_BIN/pnpm" ]] || [[ "$(pnpm --version 2>/dev/null || true)" != "$PNPM_VERSION" ]]; then
     log "pnpm@$PNPM_VERSION を入れます"
     npm install --global --no-fund --no-audit --no-update-notifier "pnpm@$PNPM_VERSION" >&2
   fi
