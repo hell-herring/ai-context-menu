@@ -1,17 +1,12 @@
 import { type Browser, browser } from "wxt/browser";
 import { defineBackground } from "wxt/utils/define-background";
 import { buildMenuItems, handleMenuClick, type MenuItemDefinition } from "../lib/context-menu";
-import { PageExtractionSchema } from "../lib/extract/schema";
 import { t } from "../lib/i18n";
-import {
-  createContentJob,
-  createErrorJob,
-  createJobSource,
-  type JobContext,
-} from "../lib/job/create";
+import type { JobContext } from "../lib/job/create";
+import { type ClickTarget, type PrepareJobDeps, prepareJob } from "../lib/job/prepare";
 import type { PresetId } from "../lib/prompt/presets";
 import { JobWriter } from "../lib/storage/session";
-import { getCoreSettings } from "../lib/storage/settings";
+import { getCoreSettings, getExcludedDomains } from "../lib/storage/settings";
 
 export default defineBackground(() => {
   const jobs = new JobWriter();
@@ -41,7 +36,7 @@ export default defineBackground(() => {
         openSidePanel: (windowId) => browser.sidePanel.open({ windowId }),
         onSidePanelOpened: async ({ presetId, windowId }) => {
           const context = createJobContext(info, { presetId, windowId, seq, createdAt });
-          const job = await prepareJob(info, tab, context);
+          const job = await prepareJob(clickTarget(info, tab), context, prepareJobDeps);
           await jobs.write(job);
         },
         onSidePanelOpenFailed: (error) => {
@@ -66,46 +61,32 @@ function createJobContext(
   };
 }
 
-/** クリックされたページから本文を取得してジョブを作る（docs/tech-stack.md §4.2 手順 4〜6） */
-async function prepareJob(
+/** background の副作用（Chrome API・ストレージ）。判定ロジックは lib/job/prepare.ts */
+const prepareJobDeps: PrepareJobDeps = {
+  async runScript(file, { tabId, frameId }) {
+    const [injection] = await browser.scripting.executeScript({
+      target: { tabId, frameIds: [frameId] },
+      files: [file],
+    });
+    return injection?.result;
+  },
+  async getMaxInputChars() {
+    return (await getCoreSettings()).maxInputChars;
+  },
+  getExcludedDomains,
+};
+
+function clickTarget(
   info: Browser.contextMenus.OnClickData,
   tab: Browser.tabs.Tab | undefined,
-  context: JobContext,
-) {
-  // 入力欄・contenteditable 内の選択は送らない
-  if (info.editable) {
-    return createErrorJob(context, "editable");
-  }
-  // 選択テキストの要約は M2 で実装する。選択があるときにページ全体を送らないよう中止する
-  if (info.selectionText !== undefined && info.selectionText !== "") {
-    return createErrorJob(context, "selectionUnsupported");
-  }
-
-  const tabId = tab?.id;
-  if (tabId === undefined || tabId < 0) {
-    return createErrorJob(context, "unreadablePage");
-  }
-
-  let result: unknown;
-  try {
-    const [injection] = await browser.scripting.executeScript({
-      target: { tabId, frameIds: [info.frameId ?? 0] },
-      files: ["/extract.js"],
-    });
-    result = injection?.result;
-  } catch {
-    // chrome:// やウェブストアなど、拡張から読み取れないページ
-    return createErrorJob(context, "unreadablePage");
-  }
-
-  const extraction = PageExtractionSchema.safeParse(result);
-  if (!extraction.success) {
-    return createErrorJob(context, "unreadablePage");
-  }
-
-  const { maxInputChars } = await getCoreSettings();
-  const source = createJobSource({ type: "page", ...extraction.data }, maxInputChars);
-  return source ? createContentJob(context, source) : createErrorJob(context, "emptyContent");
+): ClickTarget {
+  return {
+    tabId: tab?.id,
+    tabTitle: tab?.title,
+    frameId: info.frameId ?? 0,
+    editable: info.editable,
+    selectionText: info.selectionText,
+  };
 }
 
 async function registerMenus(): Promise<void> {

@@ -1,11 +1,9 @@
 import { Readability } from "@mozilla/readability";
+import { capText } from "./text";
 
 // ページ本文の抽出（docs/spec.md §3.2）。注入スクリプト（entrypoints/extract.ts）から呼ぶ。
 // ページ DOM は変更しない（読み取りのみ）。処理はすべて document.cloneNode(true) に対して行う。
 // 注入スクリプトを小さく保つため、zod 等の拡張側の依存はここで import しない（検証は ./schema.ts）。
-
-/** 注入スクリプトが返す本文のハード上限（docs/tech-stack.md §4.2 手順 5） */
-export const MAX_EXTRACT_CHARS = 1_000_000;
 
 export interface PageExtraction {
   title: string;
@@ -188,17 +186,4 @@ function collectText(node: Node, parts: string[], preformatted: boolean): void {
   } else if (CELL_ELEMENTS.has(tag)) {
     parts.push(" ");
   }
-}
-
-function capText(text: string): { text: string; originalLength: number } {
-  if (text.length <= MAX_EXTRACT_CHARS) {
-    return { text, originalLength: text.length };
-  }
-  let end = MAX_EXTRACT_CHARS;
-  const last = text.charCodeAt(end - 1);
-  if (last >= 0xd800 && last <= 0xdbff) {
-    // サロゲートペアの途中で切らない
-    end--;
-  }
-  return { text: text.slice(0, end), originalLength: text.length };
 }

@@ -1,9 +1,10 @@
 import { browser } from "wxt/browser";
 import { z } from "zod";
+import { PROVIDER_IDS, type ProviderId } from "../providers/types";
 
 // API キーは storage.local のみに置く（storage.sync に入れない。docs/guardrails.md §1）
 
-export type SecretProvider = "anthropic";
+export type SecretProvider = ProviderId;
 
 const ApiKeySchema = z
   .string()
@@ -27,6 +28,14 @@ export async function getApiKey(provider: SecretProvider): Promise<string | unde
   const stored = await browser.storage.local.get(key);
   const parsed = ApiKeySchema.safeParse(stored[key]);
   return parsed.success ? parsed.data : undefined;
+}
+
+/** すべてのプロバイダの API キー（未設定は undefined） */
+export async function getApiKeys(): Promise<Record<SecretProvider, string | undefined>> {
+  const entries = await Promise.all(
+    PROVIDER_IDS.map(async (provider) => [provider, await getApiKey(provider)] as const),
+  );
+  return Object.fromEntries(entries) as Record<SecretProvider, string | undefined>;
 }
 
 export async function setApiKey(provider: SecretProvider, apiKey: string): Promise<void> {

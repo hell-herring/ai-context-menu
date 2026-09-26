@@ -3,8 +3,9 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { Readability } from "@mozilla/readability";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { extractPage, MAX_EXTRACT_CHARS, nodeToText } from "./page";
+import { extractPage, nodeToText } from "./page";
 import { PageExtractionSchema } from "./schema";
+import { MAX_EXTRACT_CHARS } from "./text";
 
 const FIXTURES = path.resolve(import.meta.dirname, "../../../tests/fixtures");
 

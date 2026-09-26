@@ -1,6 +1,6 @@
 # 技術選定とアーキテクチャ
 
-> ステータス: **Draft v0.1**（M1 最小縦串まで実装済み）
+> ステータス: **Draft v0.1**（M2 実装中）
 > 関連: [機能仕様](./spec.md) / [ガードレール](./guardrails.md) / [AGENTS.md](../AGENTS.md)
 
 ## 1. 技術スタック一覧
@@ -66,7 +66,7 @@
 
 ```
 ┌────────────── Web ページ (タブ) ──────────────┐
-│  extract.js (unlisted script, 必要時のみ注入)   │
+│  extract*.js (unlisted script, 必要時のみ注入)  │
 │   - getSelection() / Readability               │
 └──────────────▲──────────────────────────────┘
                │ scripting.executeScript (activeTab)
@@ -90,16 +90,16 @@
 1. `contextMenus.onClicked`（background）
 2. **最初に** `const opening = chrome.sidePanel.open({ windowId: tab.windowId })` を呼ぶ（ユーザー操作のコンテキストを失う前に。ここより前に `await` を挟まない）
 3. `await opening` し、**失敗したら以降を中止する**（抽出もジョブ書き込みもしない）。パネルが開けないままバックグラウンドで送信が進むことを防ぐ
-4. 除外ドメイン判定（`info.pageUrl` と `info.frameUrl` の両方）・`info.editable` 判定 → 該当すればエラージョブを書き込んで終了（エラージョブの書き込みも手順 7 の世代確認を経由し、`seq` / `createdAt` を持たせる）
+4. 除外ドメイン判定（`info.pageUrl` と `info.frameUrl` の両方。クリックされた文書の URL にホスト名がなければ `extract-origins.js` で実際のオリジン・祖先オリジンも取得して判定）・`info.editable` 判定 → 該当すればエラージョブを書き込んで終了（エラージョブの書き込みも手順 7 の世代確認を経由し、`seq` / `createdAt` を持たせる）
 5. `scripting.executeScript` で選択テキスト or 本文を取得（注入スクリプト側でも返す文字数をハード上限 1,000,000 文字で打ち切り、元の文字数を併せて返す）
 6. **ジョブ書き込み前に**、ジョブの全フィールドを対象にサイズを測る。タイトルは 300 文字、プロバイダ送信用 URL（`origin + pathname`）は 2,048 文字、表示用の元 URL は 4,096 文字を上限とし、超える場合は短縮したうえで `oversize` の理由に `metadata` を記録する（黙って短縮しない）。本文は **XML エスケープ後の文字数**を測り（[§4.6](#46-プロンプト構成)）、設定の最大入力文字数を超えていれば、エスケープ後の長さが上限に収まる位置で元テキストを先頭から上限までに切り詰めたうえで `originalLength` と `oversize: true` を付ける（`storage.session` の容量上限で書き込みが失敗するのを防ぐ。確認なしに送らないため、サイドパネルは `oversize` のジョブを必ずユーザー確認に回す）
 7. 書き込み直前に**クリック世代を確認**する（通常ジョブ・エラージョブを問わず、`job.<windowId>` へのすべての書き込みは同じ関数を通す）。background はクリック受付時（手順 1）にウィンドウごとの連番 `seq` を採番してメモリに保持し、書き込み時点でそのウィンドウの最新 `seq` と一致しない（後から別のクリックがあった）場合は破棄する。抽出の完了順が前後しても古いクリックが新しいジョブを上書きしない。ジョブにも `seq` を含め、サイドパネルは処理中/処理済みより小さい `seq` のジョブを無視する（Service Worker 再起動で連番がリセットされた場合に備え `createdAt` も比較）
 8. **手順 7〜8 は background 内の単一の直列キュー（Promise チェーン）で実行する**。複数ウィンドウのジョブが同時に完成しても、世代確認・容量確認・削除・書き込みが最新の保存状態に対して 1 件ずつ行われる。`set()` が失敗（容量超過等）した場合は `recent` を削除して 1 回だけ再試行し、それでも失敗したら小さなエラージョブを書き込む。
-   ジョブ全体を `JSON.stringify` した UTF-8 バイト数が 2 MB を超えないこと、かつ `storage.session.getBytesInUse()` − 置き換え対象の既存 `job.<windowId>` のバイト数（`getBytesInUse(key)`）＋ 新ジョブのバイト数が 8 MB（`storage.session` の全体上限 10 MB に余裕を持たせる）以下であることを確認し（全体上限を超える場合はまず `recent` の古い項目から削除し、それでも超えるなら小さなエラージョブ「他のウィンドウの未処理ジョブが多すぎます」を書き込んで中止）（本文上限 500,000 文字なら通常は収まる。超えた場合はエラージョブを書き込んで中止）、`storage.session` の `job.<windowId>` にジョブ（`id`（UUID）, `windowId`, `seq`, `pageUrl`, `frameUrl`, `source`（本文・`originalLength`・`oversize` とその理由を含む）, `presetId`, `createdAt`）を書き込む
+   ジョブ全体を `JSON.stringify` した UTF-8 バイト数が 2 MB を超えないこと、かつ `storage.session.getBytesInUse()` − 置き換え対象の既存 `job.<windowId>` のバイト数（`getBytesInUse(key)`）＋ 新ジョブのバイト数が 8 MB（`storage.session` の全体上限 10 MB に余裕を持たせる）以下であることを確認し（全体上限を超える場合はまず `recent` の古い項目から削除し、それでも超えるなら小さなエラージョブ「他のウィンドウの未処理ジョブが多すぎます」を書き込んで中止）（本文上限 500,000 文字なら通常は収まる。超えた場合はエラージョブを書き込んで中止）、`storage.session` の `job.<windowId>` にジョブ（`id`（UUID）, `windowId`, `seq`, `pageUrl`, `frameUrl`, `hostnames`, `source`（本文・`originalLength`・`oversize` とその理由・取得元の `hostname` を含む）, `presetId`, `createdAt`）を書き込む。`hostnames` / `hostname` は送信直前の除外判定用に、**切り詰める前の** URL から求めた正規化済みホスト名（保存用に短縮した URL からはホスト名を正しく読み直せない場合があるため）
    > M1 の実装範囲: 1 ジョブ 2 MB の検査と、`set()` 失敗時の小さなエラージョブの書き込みまで。`storage.session` 全体（8 MB）の検査と `recent` の削除は `recent`（最近の要約）と合わせて M2 で実装する。
 9. サイドパネルがジョブを受け取り（下記）、入力サイズ確認（`oversize` なら理由（本文 / メタデータ）とともに「先頭から上限まで送信 / キャンセル」を表示） → **送信直前に除外ドメインを再判定** → プロバイダ呼び出し → ストリーミング表示
 
-**除外判定は送信のたびに行う**: 初回送信・確認後の送信・再生成のいずれでも、プロバイダ呼び出しの直前にジョブの `pageUrl` / `frameUrl` を**その時点の**除外設定で再判定する。確認待ちの間に除外ドメインが追加された場合も送信しない。
+**除外判定は送信のたびに行う**: 初回送信・確認後の送信・再生成のいずれでも、プロバイダ呼び出しの直前にジョブの `hostnames` / `source.hostname`（と保存済みの各 URL）を**その時点の**除外設定で再判定する（`isExcludedJob()`）。確認待ちの間に除外ドメインが追加された場合も送信しない。
 
 **`recent` の上限**: 1 結果 1 キー（`recent.<id>`、`createdAt` 付き）で保存し、複数のサイドパネルが同時に完了しても互いに上書きしない（単一キーの読み書きによる取りこぼしを避ける）。最大 10 件、1 件あたりの結果テキストは 200 KB まで。件数超過・全体容量不足（手順 8）のときは `createdAt` の古いものから削除する（同時削除で 1 件多く消えても許容）。
 
@@ -121,15 +121,17 @@
 ├── src/
 │   ├── entrypoints/
 │   │   ├── background.ts
-│   │   ├── extract.ts         # defineUnlistedScript: ページに注入する抽出処理
+│   │   ├── extract.ts         # defineUnlistedScript: ページに注入する本文抽出処理
+│   │   ├── extract-selection.ts # defineUnlistedScript: ページに注入する選択テキスト取得処理
+│   │   ├── extract-origins.ts # defineUnlistedScript: フレームの実際のオリジン・祖先オリジンの取得（除外判定用）
 │   │   ├── sidepanel/         # index.html, main.tsx, App.tsx
 │   │   └── options/
 │   ├── lib/
 │   │   ├── context-menu.ts    # メニュー定義・クリック処理（sidePanel.open の呼び出し順を含む）
 │   │   ├── providers/         # types.ts, anthropic.ts, openai.ts, registry.ts
 │   │   ├── prompt/            # presets.ts, build.ts, escape.ts, tokens.ts
-│   │   ├── extract/           # 注入スクリプトの本体（page.ts）と戻り値の検証（schema.ts）
-│   │   ├── job/               # ジョブの組み立て（create.ts）とサイドパネルでの受信判定（receive.ts）
+│   │   ├── extract/           # 注入スクリプトの本体（page.ts / selection.ts）と戻り値の検証（schema.ts）
+│   │   ├── job/               # ジョブの組み立て（create.ts）、クリックからジョブを作る判定（prepare.ts）、サイドパネルでの受信判定（receive.ts）
 │   │   ├── storage/           # schema.ts, settings.ts, secrets.ts, session.ts
 │   │   ├── domain/            # 除外ドメイン判定など
 │   │   ├── safe-url.ts        # AI 出力内リンクの許可判定
@@ -187,8 +189,11 @@ export interface Provider {
 - 実装時はパラメータ名・ヘッダを公式 SDK ドキュメントで確認すること（推測で書かない）。
 
 **OpenAI**
-- `new OpenAI({ apiKey, dangerouslyAllowBrowser: true })`、ストリーミング API を使用。
-- 既定モデルは実装時点の公式ドキュメントで決定し、定数 1 箇所で管理する。
+- `new OpenAI({ apiKey, dangerouslyAllowBrowser: true, baseURL: "https://api.openai.com/v1", organization: null, project: null, logLevel: "off" })` — `baseURL`・組織・プロジェクトは環境変数等に左右されないよう固定する。
+- Responses API（`client.responses.create({ ..., stream: true }, { signal })`）でストリーミングする。system プロンプトは `instructions`、本文は `input`、上限は `max_output_tokens`（推論トークンを含む）。`response.output_text.delta` を UI へ流し、`response.completed` / `response.incomplete` の `usage` と `incomplete_details.reason`（`max_output_tokens` → 出力上限、`content_filter` → 拒否）で終了状態を得る。`response.refusal.delta` を受けたら拒否として終える。`response.failed` はエラーコードで共通エラーに変換する。
+- **`store: false` を必ず付ける**（Responses API は既定でレスポンスを OpenAI 側に 30 日以上保存するため）。
+- 既定モデル `gpt-6-sol`（D-3。`src/lib/providers/defaults.ts` で管理）。要約用途のため `reasoning.effort` は `low`（許可リスト `gpt-6-sol` / `gpt-6-luna` のみ付与）。
+- モデル一覧（`client.models.list()`）はテキスト生成に使えるモデルの許可パターンで絞る（埋め込み・画像・音声・リアルタイム・検索・モデレーション・コーディング専用・pro 等を除外。`isTextGenerationModel()`）。
 
 **Gemini（Phase 2）**
 - Google 公式 SDK（実装時点で推奨されているもの。現時点の想定は `@google/genai`）を使い、`Provider` アダプタを 1 つ追加するだけで UI 側の変更が不要な設計を保つ。

@@ -1,9 +1,11 @@
+import { urlHostname, WRAPPER_PROTOCOLS } from "../domain/exclude";
 import { escapedTextLength, truncateToEscapedLength } from "../prompt/escape";
 import type { PresetId } from "../prompt/presets";
 import {
   type ExtractMethod,
   JOB_LIMITS,
   type Job,
+  type JobBase,
   type JobErrorCode,
   type JobSource,
   type OversizeReason,
@@ -33,6 +35,8 @@ export interface JobContext {
   presetId: PresetId;
   pageUrl: string;
   frameUrl?: string | undefined;
+  /** URL にホスト名がないフレームの実際のオリジン・祖先オリジン（除外判定用。lib/extract/origins.ts） */
+  frameOrigins?: readonly string[] | undefined;
 }
 
 /**
@@ -77,7 +81,7 @@ export function createJobSource(
   };
 
   const title = limit(content.title, JOB_LIMITS.title);
-  const displayUrl = limit(content.url, JOB_LIMITS.displayUrl);
+  const displayUrl = limitUrl(content.url, JOB_LIMITS.displayUrl, () => reasons.add("metadata"));
   const providerUrl = limit(toProviderUrl(content.url), JOB_LIMITS.providerUrl);
 
   let text = content.text;
@@ -93,6 +97,7 @@ export function createJobSource(
     title,
     displayUrl,
     providerUrl,
+    hostname: jobHostname(content.url),
     text,
     originalLength,
     inputLimit: maxInputChars,
@@ -109,19 +114,65 @@ export function createErrorJob(context: JobContext, error: JobErrorCode): Job {
   return { ...jobBase(context), kind: "error", error };
 }
 
-function jobBase(context: JobContext): JobContext {
-  const base: JobContext = {
+function jobBase(context: JobContext): JobBase {
+  const hostnames = new Set(
+    [context.pageUrl, context.frameUrl, ...(context.frameOrigins ?? [])].map((url) =>
+      url === undefined ? "" : jobHostname(url),
+    ),
+  );
+  hostnames.delete("");
+  const base: JobBase = {
     id: context.id,
     windowId: context.windowId,
     seq: context.seq,
     createdAt: context.createdAt,
     presetId: context.presetId,
-    pageUrl: context.pageUrl.slice(0, JOB_LIMITS.displayUrl),
+    pageUrl: limitUrl(context.pageUrl, JOB_LIMITS.displayUrl),
+    hostnames: [...hostnames],
   };
   if (context.frameUrl !== undefined) {
-    base.frameUrl = context.frameUrl.slice(0, JOB_LIMITS.displayUrl);
+    base.frameUrl = limitUrl(context.frameUrl, JOB_LIMITS.displayUrl);
   }
   return base;
+}
+
+/**
+ * 送信直前の除外判定に使うホスト名を、切り詰める前の URL から求める。なければ空。
+ * 上限を超える（通常ありえない）長さのホスト名は、サフィックス（`*.example.com` の判定に使う部分）を残して切る。
+ */
+export function jobHostname(url: string): string {
+  return (urlHostname(url) ?? "").slice(-JOB_LIMITS.hostname);
+}
+
+/**
+ * URL を上限の長さに短縮する。サイドパネルは短縮後の URL で除外ドメインを再判定するため、
+ * ホスト名が失われないよう、超過する場合は先にユーザー情報（`user:pass@`）を除いてから切る
+ * （ホスト名は最大 253 文字なので、ユーザー情報を除けばオリジンは上限内に収まる）。
+ */
+export function limitUrl(url: string, max: number, onTruncate?: () => void): string {
+  if (url.length <= max) {
+    return url;
+  }
+  onTruncate?.();
+  return stripUrlCredentials(url).slice(0, max);
+}
+
+function stripUrlCredentials(url: string): string {
+  try {
+    const parsed = new URL(url);
+    // `filesystem:https://user@host/…` 等は埋め込まれた URL のユーザー情報を除く
+    if (WRAPPER_PROTOCOLS.has(parsed.protocol)) {
+      return `${parsed.protocol}${stripUrlCredentials(url.slice(parsed.protocol.length))}`;
+    }
+    if (parsed.username === "" && parsed.password === "") {
+      return url;
+    }
+    parsed.username = "";
+    parsed.password = "";
+    return parsed.href;
+  } catch {
+    return url;
+  }
 }
 
 /** ジョブを JSON 化した UTF-8 バイト数 */

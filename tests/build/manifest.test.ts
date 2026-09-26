@@ -38,7 +38,7 @@ describe("本番ビルドの manifest", () => {
       minimum_chrome_version: "116",
       permissions: ["contextMenus", "sidePanel", "activeTab", "scripting", "storage"],
       optional_permissions: undefined,
-      host_permissions: ["https://api.anthropic.com/*"],
+      host_permissions: ["https://api.anthropic.com/*", "https://api.openai.com/*"],
       optional_host_permissions: undefined,
       content_security_policy: undefined,
       content_scripts: undefined,
@@ -57,6 +57,8 @@ describe("本番ビルドの manifest", () => {
   it("注入用の抽出スクリプトが出力されている（ページからは読み込めない）", async () => {
     const files = (await listFiles(OUTPUT_DIR)).map((file) => path.relative(OUTPUT_DIR, file));
     expect(files).toContain("extract.js");
+    expect(files).toContain("extract-selection.js");
+    expect(files).toContain("extract-origins.js");
   });
 });
 

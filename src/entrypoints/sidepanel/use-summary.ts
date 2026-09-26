@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { browser } from "wxt/browser";
-import { JobReceiver } from "../../lib/job/receive";
+import { isExcludedJob, JobReceiver } from "../../lib/job/receive";
 import { buildPrompt, describeOutputLanguage } from "../../lib/prompt/build";
 import { PROVIDERS } from "../../lib/providers/registry";
+import { resolveProvider } from "../../lib/providers/select";
 import {
   ProviderError,
   type ProviderErrorKind,
+  type ProviderId,
   type StopReason,
   type Usage,
 } from "../../lib/providers/types";
 import type { ContentJob, Job, JobErrorCode } from "../../lib/storage/schema";
-import { getApiKey } from "../../lib/storage/secrets";
+import { getApiKeys } from "../../lib/storage/secrets";
 import { readJob, removeJob, watchJob } from "../../lib/storage/session";
-import { getCoreSettings } from "../../lib/storage/settings";
+import { getCoreSettings, getExcludedDomains } from "../../lib/storage/settings";
 
 export type Phase =
   | { kind: "confirm" }
@@ -20,12 +22,19 @@ export type Phase =
   | { kind: "streaming" }
   | { kind: "done"; stopReason: StopReason; usage: Usage | undefined }
   | { kind: "stopped" }
-  | { kind: "error"; error: ProviderErrorKind | "apiKeyMissing" };
+  | { kind: "error"; error: ProviderErrorKind | "apiKeyMissing" | "excludedDomain" };
 
 export type PanelState =
   | { kind: "idle" }
   | { kind: "jobError"; error: JobErrorCode }
-  | { kind: "summary"; job: ContentJob; model: string | undefined; phase: Phase; text: string };
+  | {
+      kind: "summary";
+      job: ContentJob;
+      /** 送信先（API キー・設定を読んだ後に決まる） */
+      target: { provider: ProviderId; model: string } | undefined;
+      phase: Phase;
+      text: string;
+    };
 
 /**
  * サイドパネルのジョブ受信と AI 呼び出し。
@@ -64,7 +73,7 @@ export function useSummary() {
         );
       };
 
-      setState({ kind: "summary", job, model: undefined, phase: { kind: "streaming" }, text: "" });
+      setState({ kind: "summary", job, target: undefined, phase: { kind: "streaming" }, text: "" });
 
       // 受信したテキストは描画フレームごとにまとめて反映する
       let text = "";
@@ -75,15 +84,27 @@ export function useSummary() {
       };
 
       try {
-        const [apiKey, settings] = await Promise.all([getApiKey("anthropic"), getCoreSettings()]);
-        if (!apiKey) {
+        const [apiKeys, settings] = await Promise.all([getApiKeys(), getCoreSettings()]);
+        // 確認待ち・再生成の間に除外ドメインが追加された場合も送らない。
+        // プロバイダ呼び出しの直前に、その時点の設定で毎回判定する（docs/guardrails.md §2）。
+        // 他の読み込みより後に読み、判定からプロバイダ呼び出しまでの間に await を挟まない
+        const excludedDomains = await getExcludedDomains();
+        if (isExcludedJob(job, excludedDomains)) {
+          update({ phase: { kind: "error", error: "excludedDomain" } });
+          return;
+        }
+        const provider = resolveProvider(settings.defaultProvider, {
+          anthropic: apiKeys.anthropic !== undefined,
+          openai: apiKeys.openai !== undefined,
+        });
+        const apiKey = provider && apiKeys[provider];
+        if (!provider || !apiKey) {
           update({ phase: { kind: "error", error: "apiKeyMissing" } });
           return;
         }
-        const model = settings.models.anthropic;
-        update({ model });
+        const model = settings.models[provider];
+        update({ target: { provider, model } });
 
-        // M2: ここ（プロバイダ呼び出しの直前）で除外ドメインをその時点の設定で再判定する
         const prompt = buildPrompt({
           presetId: job.presetId,
           outputLanguage: describeOutputLanguage(
@@ -98,7 +119,7 @@ export function useSummary() {
           },
         });
 
-        const events = PROVIDERS.anthropic.stream(apiKey, {
+        const events = PROVIDERS[provider].stream(apiKey, {
           ...prompt,
           model,
           maxOutputTokens: settings.maxOutputTokens,
@@ -139,7 +160,7 @@ export function useSummary() {
         setState({ kind: "jobError", error: job.error });
       } else if (job.source.oversize) {
         // 上限超過・メタデータ短縮は黙って送らず、必ずユーザーに確認する
-        setState({ kind: "summary", job, model: undefined, phase: { kind: "confirm" }, text: "" });
+        setState({ kind: "summary", job, target: undefined, phase: { kind: "confirm" }, text: "" });
       } else {
         void send(job);
       }
