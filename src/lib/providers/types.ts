@@ -49,6 +49,7 @@ export interface Provider {
  * - rate_limit: 429（SDK の自動リトライ後）
  * - overloaded: 5xx / 過負荷
  * - network: 接続できない・タイムアウト
+ * - context_length: 入力がモデルのコンテキスト長を超えた（プロバイダが構造化されたエラーコードで返す場合のみ）
  * - bad_request: その他の 4xx
  * - aborted: ユーザーが停止した
  */
@@ -57,6 +58,7 @@ export type ProviderErrorKind =
   | "rate_limit"
   | "overloaded"
   | "network"
+  | "context_length"
   | "bad_request"
   | "aborted"
   | "unknown";

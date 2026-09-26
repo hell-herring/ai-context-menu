@@ -2,6 +2,7 @@ import { useState } from "react";
 import { browser } from "wxt/browser";
 import { MarkdownView } from "../../components/MarkdownView";
 import { type MessageKey, t } from "../../lib/i18n";
+import type { ModelOverflow } from "../../lib/job/request";
 import { estimateTokens } from "../../lib/prompt/tokens";
 import { PROVIDER_ERROR_MESSAGES } from "../../lib/providers/error-messages";
 import { PROVIDERS } from "../../lib/providers/registry";
@@ -75,9 +76,14 @@ function Body({
     case "summary":
       return (
         <>
-          <SourceInfo job={state.job} />
+          <SourceInfo job={state.job} fittedChars={state.fittedChars} />
           {state.phase.kind === "confirm" ? (
-            <SendConfirm job={state.job} onConfirm={onConfirm} onCancel={onCancel} />
+            <SendConfirm
+              job={state.job}
+              overflow={state.phase.overflow}
+              onConfirm={onConfirm}
+              onCancel={onCancel}
+            />
           ) : (
             <>
               {state.text !== "" && <MarkdownView text={state.text} />}
@@ -90,7 +96,7 @@ function Body({
 }
 
 /** 何を送ったか（対象種別・タイトル・URL・文字数・切り詰め有無）を常に表示する（docs/guardrails.md §2） */
-function SourceInfo({ job }: { job: ContentJob }) {
+function SourceInfo({ job, fittedChars }: { job: ContentJob; fittedChars: number | undefined }) {
   const { source } = job;
   const truncatedContent = source.oversizeReasons.includes("content");
   const truncatedMetadata = source.oversizeReasons.includes("metadata");
@@ -110,6 +116,11 @@ function SourceInfo({ job }: { job: ContentJob }) {
           {t("sourceTruncatedContent", formatNumber(source.inputLimit))}
         </p>
       )}
+      {fittedChars !== undefined && (
+        <p className="text-amber-700 text-xs dark:text-amber-400">
+          {t("sourceFittedToModel", formatNumber(fittedChars))}
+        </p>
+      )}
       {truncatedMetadata && (
         <p className="text-amber-700 text-xs dark:text-amber-400">{t("sourceTruncatedMetadata")}</p>
       )}
@@ -117,18 +128,23 @@ function SourceInfo({ job }: { job: ContentJob }) {
   );
 }
 
-/** 送信前の確認。上限超過なら理由と「先頭から上限まで送信」、そうでなければ（設定「常に」）送信するかを尋ねる */
+/**
+ * 送信前の確認。上限超過・モデルの入力上限の超過なら理由と切り詰めて送るボタン、
+ * そうでなければ（設定「常に」）送信するかを尋ねる
+ */
 function SendConfirm({
   job,
+  overflow,
   onConfirm,
   onCancel,
 }: {
   job: ContentJob;
+  overflow: ModelOverflow | undefined;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   const { source } = job;
-  if (!source.oversize) {
+  if (!source.oversize && !overflow) {
     return (
       <section
         className="flex flex-col gap-2 rounded-md border border-neutral-300 p-3 text-sm dark:border-neutral-600"
@@ -164,9 +180,18 @@ function SendConfirm({
         </p>
       )}
       {source.oversizeReasons.includes("metadata") && <p>{t("oversizeMetadata")}</p>}
+      {overflow && (
+        <p>
+          {t("modelOverflow", [
+            overflow.model,
+            formatNumber(overflow.estimatedTokens),
+            formatNumber(overflow.budget),
+          ])}
+        </p>
+      )}
       <div className="flex gap-2">
         <Button onClick={onConfirm} primary>
-          {t("buttonSendTruncated")}
+          {t(overflow ? "buttonSendFitted" : "buttonSendTruncated")}
         </Button>
         <Button onClick={onCancel}>{t("buttonCancel")}</Button>
       </div>

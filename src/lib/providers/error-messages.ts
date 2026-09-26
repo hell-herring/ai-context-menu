@@ -7,6 +7,7 @@ export const PROVIDER_ERROR_MESSAGES = {
   rate_limit: "errorRateLimit",
   overloaded: "errorOverloaded",
   network: "errorNetwork",
+  context_length: "errorContextLength",
   bad_request: "errorBadRequest",
   aborted: "statusStopped",
   unknown: "errorUnknown",

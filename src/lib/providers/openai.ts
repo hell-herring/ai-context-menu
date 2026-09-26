@@ -189,6 +189,9 @@ function responseFailedError(response: ResponseObject): ProviderError {
   }
 }
 
+/** コンテキスト長の超過を表すエラーコード（エラーの `code`。メッセージ本文では判定しない） */
+const CONTEXT_LENGTH_EXCEEDED = "context_length_exceeded";
+
 /** SDK の型付き例外クラスで分岐して共通エラーに変換する（メッセージ文字列でマッチしない） */
 export function toProviderError(error: unknown, signal?: AbortSignal): ProviderError {
   if (error instanceof ProviderError) {
@@ -218,7 +221,13 @@ export function toProviderError(error: unknown, signal?: AbortSignal): ProviderE
     if (status === undefined) {
       return new ProviderError(error.code === "rate_limit_exceeded" ? "rate_limit" : "overloaded");
     }
-    return new ProviderError(status >= 500 ? "overloaded" : "bad_request", status);
+    if (status >= 500) {
+      return new ProviderError("overloaded", status);
+    }
+    return new ProviderError(
+      error.code === CONTEXT_LENGTH_EXCEEDED ? "context_length" : "bad_request",
+      status,
+    );
   }
   return new ProviderError("unknown");
 }

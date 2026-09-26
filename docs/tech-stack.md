@@ -174,7 +174,7 @@ export interface Provider {
 ```
 
 - UI はこのインターフェイスのみに依存し、SDK 型を UI 層へ漏らさない。
-- エラーは各アダプタで共通エラー型 `ProviderError`（`kind`: `auth` / `rate_limit` / `overloaded` / `network` / `bad_request` / `aborted` / `unknown`）へ変換する。SDK の型付き例外クラスで分岐し、メッセージ文字列でマッチしない。`ProviderError` のメッセージは種別と HTTP ステータスのみとし、元の例外（レスポンス詳細）は保持しない。
+- エラーは各アダプタで共通エラー型 `ProviderError`（`kind`: `auth` / `rate_limit` / `overloaded` / `network` / `context_length` / `bad_request` / `aborted` / `unknown`）へ変換する。`context_length` はプロバイダがエラーコードでコンテキスト長超過を示す場合のみ（OpenAI の `context_length_exceeded`）。SDK の型付き例外クラスで分岐し、メッセージ文字列でマッチしない。`ProviderError` のメッセージは種別と HTTP ステータスのみとし、元の例外（レスポンス詳細）は保持しない。
 - モデル依存パラメータ（`effort`, `thinking` 等）は**既知モデルの許可リスト**でのみ付与し、未知モデルには送らない（400 回避）。
 
 ### 4.5 プロバイダ別の実装メモ
