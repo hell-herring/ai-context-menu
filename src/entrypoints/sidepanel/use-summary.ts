@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { browser } from "wxt/browser";
 import { isExcludedJob, JobReceiver, needsConfirmation } from "../../lib/job/receive";
-import { type ModelOverflow, planRequest, type RequestPlan } from "../../lib/job/request";
+import {
+  approvalOf,
+  type ModelFitApproval,
+  type ModelOverflow,
+  planRequest,
+  type RequestPlan,
+} from "../../lib/job/request";
 import { PROVIDERS } from "../../lib/providers/registry";
 import { resolveProvider } from "../../lib/providers/select";
 import {
@@ -37,8 +43,10 @@ export type PanelState =
       target: { provider: ProviderId; model: string } | undefined;
       phase: Phase;
       text: string;
-      /** ユーザーが「モデルに収まる長さまで送信」を選んだ（再生成でも同じ扱いにする） */
-      fitToModel: boolean;
+      /**
+       * ユーザーが「モデルに収まる長さまで送信」を選んだときの条件（再生成でも、条件が同じなら同じ扱いにする）
+       */
+      fitApproval: ModelFitApproval | undefined;
       /** モデルに収めるために本文を切り詰めて送った場合、送った本文の文字数 */
       fittedChars: number | undefined;
     };
@@ -68,7 +76,7 @@ function receivedModelCheck(
   if (!target) {
     return undefined;
   }
-  const plan = planRequest(job, settings, target.provider, browser.i18n.getUILanguage(), false);
+  const plan = planRequest(job, settings, target.provider, browser.i18n.getUILanguage(), undefined);
   return plan.kind === "ready" ? undefined : plan;
 }
 
@@ -94,7 +102,7 @@ export function useSummary() {
   }, []);
 
   const send = useCallback(
-    async (job: ContentJob, fitToModel: boolean) => {
+    async (job: ContentJob, fitApproval: ModelFitApproval | undefined) => {
       cancelRun();
       const run = runRef.current;
       const controller = new AbortController();
@@ -117,7 +125,7 @@ export function useSummary() {
         target: undefined,
         phase: { kind: "streaming" },
         text: "",
-        fitToModel,
+        fitApproval,
         fittedChars: undefined,
       });
 
@@ -149,7 +157,14 @@ export function useSummary() {
         update({ target: { provider, model } });
 
         // 送信直前にも、その時点の設定のモデルのコンテキスト長で判定する（docs/spec.md §3.3）
-        const plan = planRequest(job, settings, provider, browser.i18n.getUILanguage(), fitToModel);
+        // 確認したときとプロバイダ・モデル・使える量が変わっていれば、切り詰めずに確認に戻す
+        const plan = planRequest(
+          job,
+          settings,
+          provider,
+          browser.i18n.getUILanguage(),
+          fitApproval,
+        );
         if (plan.kind === "overflow") {
           // 黙って切り詰めず、確認に戻す
           update({ phase: { kind: "confirm", overflow: plan.overflow } });
@@ -212,7 +227,7 @@ export function useSummary() {
         target: undefined,
         phase: { kind: "preparing" },
         text: "",
-        fitToModel: false,
+        fitApproval: undefined,
         fittedChars: undefined,
       });
       const [settings, apiKeys] = await Promise.all([
@@ -232,7 +247,7 @@ export function useSummary() {
         setState({
           ...summary,
           phase: { kind: "error", error: "context_length" },
-          fitToModel: false,
+          fitApproval: undefined,
           fittedChars: undefined,
         });
         return;
@@ -243,11 +258,11 @@ export function useSummary() {
         setState({
           ...summary,
           phase: { kind: "confirm", overflow },
-          fitToModel: false,
+          fitApproval: undefined,
           fittedChars: undefined,
         });
       } else {
-        void send(job, false);
+        void send(job, undefined);
       }
     },
     [cancelRun, send],
@@ -303,7 +318,8 @@ export function useSummary() {
      */
     confirm: useCallback(() => {
       if (current?.phase.kind === "confirm") {
-        void send(current.job, current.fitToModel || current.phase.overflow !== undefined);
+        const { overflow } = current.phase;
+        void send(current.job, overflow ? approvalOf(overflow) : current.fitApproval);
       }
     }, [current, send]),
     cancel: useCallback(() => {
@@ -314,7 +330,7 @@ export function useSummary() {
     stop: useCallback(() => controllerRef.current?.abort(), []),
     regenerate: useCallback(() => {
       if (current && current.phase.kind !== "preparing") {
-        void send(current.job, current.fitToModel);
+        void send(current.job, current.fitApproval);
       }
     }, [current, send]),
   };
