@@ -7,7 +7,7 @@
   "type": "module",
   "packageManager": "pnpm@12.6.0",
   "engines": {
-    "node": ">=24"
+    "node": ">=26"
   },
   "scripts": {
     "dev": "wxt",
@@ -33,7 +33,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
     "@tailwindcss/vite": "4.3.3",
-    "@types/node": "24.13.6",
+    "@types/node": "26.6.2",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@wxt-dev/module-react": "1.2.2",

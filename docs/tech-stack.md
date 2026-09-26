@@ -20,7 +20,7 @@
 | 単体テスト | **Vitest**（+ happy-dom） | Vite と設定共有。WXT が公式にテスト支援を提供 | Jest |
 | E2E テスト | **Playwright**（拡張を読み込んだ Chromium） | 拡張の実読み込み・サイドパネル検証が可能 | Puppeteer |
 | パッケージマネージャ | **pnpm 12** | 高速・厳格な依存解決。公開直後の版を導入しない `minimumReleaseAge` を既定で持つ | npm / yarn |
-| ランタイム（開発） | **Node.js 24 LTS** | 現行 Active LTS | - |
+| ランタイム（開発） | **Node.js 26** | 2026-10-28 に Active LTS 入り予定（LTS 入り前に移行を決定。`@types/node` のメジャーも 26 に合わせる） | Node.js 24 LTS（2026-10-20 に Maintenance LTS へ移行） |
 | CI | **GitHub Actions** | リポジトリが GitHub | - |
 | 依存更新 | **Renovate**（または Dependabot） | 依存の脆弱性・更新を自動 PR 化 | - |
 
