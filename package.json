@@ -24,7 +24,7 @@
     "check": "pnpm lint && pnpm typecheck && pnpm test"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "0.128.0",
+    "@anthropic-ai/sdk": "0.129.0",
     "@mozilla/readability": "0.6.0",
     "openai": "7.23.0",
     "react": "19.3.0",
